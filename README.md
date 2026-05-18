@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Research Development Intelligence
 
-## Getting Started
+MVP for a university research development office: **Simpler.Grants.gov** funding data in **Supabase**, **investigator** profiles (CSV + normalization), deterministic **PI ↔ NOFO matches**, and Match Center review tools. This is **not** a submission, budget, or proposal-writing system.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Next.js 14** (App Router) + **TypeScript** + **Tailwind CSS**
+- **Supabase** (Postgres, Auth, RLS)
+- **Zod** where forms/actions validate input
+- **Simpler.Grants.gov** REST API (`POST /v1/opportunities/search`) → `funding_opportunities`
+- **OpenAI** (optional) for PI community narrative / charts copy on **Community Snapshot**
+
+## Prerequisites
+
+- Node 20+
+- A [Supabase](https://supabase.com) project
+- Apply SQL migrations (Supabase CLI or **SQL Editor**), in filename order
+
+## Environment variables
+
+Copy `.env.example` to `.env.local`:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key (browser + server) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Cron / admin scripts | Service role; never expose to the browser |
+| `SIMPLER_GRANTS_API_KEY` | No | Simpler sync into `funding_opportunities` (server-only) |
+| `SIMPLER_GRANTS_API_BASE_URL` | No | Default `https://api.simpler.grants.gov` |
+| `OPENAI_API_KEY` | No | Optional narrative on **Community Snapshot** |
+| `NCBI_CONTACT_EMAIL` | No | Politeness header for PubMed E-utilities on PI pages |
+| `CRON_SECRET` | No | Bearer secret for `POST /api/cron/matching` |
+
+## Supabase setup
+
+1. Create a project in Supabase.
+2. Run every file under `supabase/migrations/` **in lexicographic (timestamp) order** in the **SQL Editor** (or `supabase db push`).
+3. **Authentication → Providers**: enable **Email** (password).
+4. Sign up once from `/login`.
+5. (Optional) promote an admin user:
+
+```sql
+update public.profiles set role = 'admin' where email = 'you@university.edu';
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+RLS allows all `authenticated` users full access to app tables for this MVP.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+cp .env.example .env.local
+# fill NEXT_PUBLIC_* from Supabase
 
-## Learn More
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000) — you will be redirected to `/login` until a session exists.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Seed script
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`npm run seed` prints a short notice only (legacy Grants.gov / watchlist seeding was removed). Use **Match Center** and **Funding Opportunities** in the app to load data.
 
-## Deploy on Vercel
+### Tests
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm test
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## NIH investigators, Simpler funding, and matching
+
+1. **Investigators**: CSV import from **Investigators**; normalization fills `investigator_profile_features`.
+2. **Funding**: set `SIMPLER_GRANTS_API_KEY`, then **Sync Simpler** (Funding Opportunities or Match Center).
+3. **Features**: re-extract `opportunity_features`, then **Recompute** suggested matches (per PI, per NOFO, or batch in Match Center).
+4. **Cron** (optional): `POST /api/cron/matching` with `Authorization: Bearer <CRON_SECRET>` — uses the service role; runs Simpler sync (if configured), feature refresh, and full suggested-match recompute.
+
+Scoring lives under `src/lib/matching/` (`weights.ts`, `score-match.ts`, explanations). `matches` rows use `funding_opportunities.id` as `opportunity_id`.
+
+See `docs/IMPLEMENTATION_PLAN_MATCHING.md` for historical design notes (some items predate the current schema).
+
+## Vercel deployment
+
+1. Import the repo into Vercel.
+2. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+3. Add server-only secrets (`SIMPLER_GRANTS_API_KEY`, `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`) only where those routes/scripts run.
+4. Add your site URL under Supabase **Authentication → URL Configuration** if you use email links.
+
+## Project layout (high level)
+
+- `src/app/` — routes, `api/cron/matching`, server actions under `app/actions`
+- `src/lib/ingestion/simpler-grants/` — Simpler API client
+- `src/lib/normalization/` — synonym dictionaries + text → tags
+- `src/lib/investigators/` — PI feature normalization
+- `src/lib/funding-opportunities/` — NOFO feature extraction
+- `src/lib/matching/` — retrieval, scoring, explanations
+- `src/lib/services/` — Simpler sync, sync job logs, activity logging
+- `src/lib/queries/` — dashboard data
+- `supabase/migrations/` — schema + RLS
+
+## Routes
+
+| Path | Description |
+|------|-------------|
+| `/login` | Email / password |
+| `/dashboard` | Counts and links into funding + investigators |
+| `/funding-opportunities` | Simpler-sourced list (filters, sort) |
+| `/funding-opportunities/[id]` | NOFO detail, features, matches, cutoff |
+| `/investigators` | PI directory + CSV import |
+| `/investigators/[id]` | Profile + ranked funding matches |
+| `/pi-community` | Community intelligence overview: tags, AI narrative, PubMed/RePORTER/engagement KPIs |
+| `/pi-community/engagements` | Strategist engagement list + create |
+| `/pi-community/engagements/[id]` | Edit engagement |
+| `/admin/matching` | Review queue, batch jobs, sync logs (admin) |
+| `/settings` | Profile readout |
+
+## License
+
+Private / institutional use — adjust as needed.

@@ -1,0 +1,4 @@
+first_name,last_name,email,home_department,division,rank,affiliations,primary_research_area,secondary_research_areas,primary_disease_focus,secondary_disease_focuses,technological_expertise,clinical_samples,biobanks,small_grants,large_grants,nih_profile_id,research_summary
+Alex,Strong,alex.strong@example.edu,Oncology,,Professor,,cancer immunotherapy and tumor microenvironment,translational immuno-oncology,lung cancer,solid tumors,single-cell RNA-seq and spatial transcriptomics,,,,yes R21,multiple R01,,Strong overlap demo PI for Quick Match.
+Pat,Partial,pat.partial@example.edu,Pediatrics,,Associate Professor,,infectious disease immunity,,inflammatory bowel disease,,flow cytometry,,,,pilot R03,,,Partial overlap — some infection/inflammation vocabulary.
+Quinn,Weak,quinn.weak@example.edu,Neurology,,Assistant Professor,,circuit neuroscience,,rare neurodegeneration,,optogenetics,,,,none,,,Minimal overlap with typical cancer immunotherapy NOFOs.
