@@ -48,7 +48,6 @@ export function PipelineOpportunityBoardCard({
   onWorkflowToggle,
   onSendEmails,
   onMoveMonitor,
-  onCold,
   onStageChange,
   pending,
   sendEmailsLabel,
@@ -67,7 +66,6 @@ export function PipelineOpportunityBoardCard({
   onWorkflowToggle: () => void;
   onSendEmails: () => void;
   onMoveMonitor: () => void;
-  onCold: () => void;
   onStageChange: (stage: PipelineStage) => void;
   pending: boolean;
   sendEmailsLabel: string;

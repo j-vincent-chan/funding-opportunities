@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   expireMonitorAwaitingToColdAction,
   expireStaleColdOpportunitiesAction,
-  moveOpportunityToColdAction,
   setSavedOpportunityCommunitiesAction,
   updateSavedOpportunityPipelineAction,
 } from "@/app/actions/opportunity-pipeline-actions";
@@ -413,14 +412,6 @@ export function OpportunityPipelineListClient({
         if (options?.switchToMonitorTab) setBucketTab("monitor");
         router.refresh();
       }
-    });
-  }
-
-  function moveToCold(oppId: string) {
-    startTransition(async () => {
-      const r = await moveOpportunityToColdAction({ opportunityId: oppId });
-      if (!r.ok) window.alert(r.error);
-      else router.refresh();
     });
   }
 
@@ -901,7 +892,6 @@ export function OpportunityPipelineListClient({
                     }
                     onSendEmails={() => moveToMonitor(row.opportunity_id, { switchToMonitorTab: true })}
                     onMoveMonitor={() => moveToMonitor(row.opportunity_id, { switchToMonitorTab: true })}
-                    onCold={() => moveToCold(row.opportunity_id)}
                     onStageChange={(s) => setStage(row.opportunity_id, s)}
                     pending={pending}
                   />
