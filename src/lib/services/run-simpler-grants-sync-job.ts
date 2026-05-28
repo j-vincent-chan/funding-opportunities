@@ -18,10 +18,16 @@ function clampSyncMaxNofos(requested?: number): number {
   return Math.min(DEFAULT_MAX_NOFOS_PER_SYNC, Math.max(1, Math.floor(requested)));
 }
 
-/** Pull NIH / federal notices from Simpler.Grants.gov into `funding_opportunities` (cron or admin). */
+/**
+ * Pull NIH / federal notices from Simpler.Grants.gov into `funding_opportunities` (cron or admin).
+ *
+ * `enrichWithDetailFetch` defaults to `true` (one extra `GET /opportunities/{id}` per notice for
+ * complete dates/instruments/award bounds). Automated cron runs should pass `false`: enriching
+ * thousands of notices can take 10+ minutes and exceed Vercel's function `maxDuration`.
+ */
 export async function runSimplerGrantsSyncJob(
   supabase: SupabaseClient,
-  opts: { maxNofosPerRun?: number; source?: string } = {}
+  opts: { maxNofosPerRun?: number; source?: string; enrichWithDetailFetch?: boolean } = {}
 ): Promise<SimplerGrantsSyncJobResult> {
   const client = createSimplerGrantsClient();
   if (!client) {
@@ -29,15 +35,18 @@ export async function runSimplerGrantsSyncJob(
   }
 
   const cap = clampSyncMaxNofos(opts.maxNofosPerRun);
+  const enrichWithDetailFetch = opts.enrichWithDetailFetch ?? true;
   const logId = await startSyncJobLog(supabase, "simpler_grants_sync", {
     maxNofosPerRun: cap,
     source: opts.source ?? "cron",
+    enrichWithDetailFetch,
   });
 
   try {
     const result = await syncSimplerGrantsToSupabase(supabase, client, {
       pageSize: SYNC_PAGE_SIZE,
       maxNofosPerRun: cap,
+      enrichWithDetailFetch,
     });
     if (logId) {
       await finishSyncJobLog(supabase, logId, result.errors.length === 0, undefined, {

@@ -28,6 +28,7 @@ import {
   type FundingListSortKey,
 } from "@/lib/funding-opportunities/funding-list-url";
 import { FundingListKeywordSearch } from "@/components/funding/funding-list-keyword-search";
+import { FundingChatPanel } from "@/components/funding/funding-chat-panel";
 import { FundingListPagination } from "@/components/funding/funding-list-pagination";
 import { FundingOpportunitiesFiltersPanel } from "@/components/funding/funding-opportunities-filters-panel";
 import { FundingInstrumentPills } from "@/components/funding/funding-instrument-pills";
@@ -302,8 +303,12 @@ export default async function FundingOpportunitiesPage({
           </p>
         </header>
 
-        <div className="mb-8">
+        <div className="mb-6">
           <FundingListKeywordSearch editorial />
+        </div>
+
+        <div className="mb-8">
+          <FundingChatPanel />
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-8 md:flex-row md:items-start md:gap-8 lg:gap-10 xl:gap-12">

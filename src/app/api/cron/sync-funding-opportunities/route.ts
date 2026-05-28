@@ -23,7 +23,12 @@ async function handleCronSync(req: Request) {
     );
   }
 
-  const result = await runSimplerGrantsSyncJob(supabase, { source: "vercel_cron" });
+  // Skip per-notice detail enrichment so the nightly job finishes within the function time limit
+  // (enriching thousands of notices can take 10+ min). The in-app "Sync Simpler" still enriches.
+  const result = await runSimplerGrantsSyncJob(supabase, {
+    source: "vercel_cron",
+    enrichWithDetailFetch: false,
+  });
   if (!result.ok) {
     const status = result.error.includes("not configured") ? 503 : 500;
     return NextResponse.json({ ok: false, error: result.error }, { status });

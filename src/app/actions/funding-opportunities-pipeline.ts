@@ -33,7 +33,8 @@ async function syncFundingOpportunitiesWithCap(maxNofosPerRun: number) {
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/funding-opportunities");
-  return { ok: true as const, ...result };
+  // `result` already carries `ok: true` plus the sync counters.
+  return result;
 }
 
 /** Full sync up to {@link DEFAULT_MAX_NOFOS_PER_SYNC} opportunities. */

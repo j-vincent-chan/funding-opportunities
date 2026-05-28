@@ -36,7 +36,9 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic =
     path.startsWith("/login") ||
-    path.startsWith("/auth");
+    path.startsWith("/auth") ||
+    // Cron endpoints authenticate via CRON_SECRET (Bearer), not a Supabase session.
+    path.startsWith("/api/cron");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

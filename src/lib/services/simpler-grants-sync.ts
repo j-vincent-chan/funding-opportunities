@@ -594,7 +594,18 @@ export async function syncSimplerGrantsToSupabase(
     }
     if (hits.length === 0) break;
 
+    // Prepare every row for the page (optionally enriched), then write in two batched upserts:
+    // one for funding_opportunities and one for opportunity_features. Per-row round-trips were the
+    // dominant cost and pushed full runs past serverless function time limits.
+    const remainingBeforePage = maxNofos - upserted;
+    if (remainingBeforePage <= 0) break;
+
+    type FundingRow = ReturnType<typeof hitToFundingRow>;
+    const pageRows: FundingRow[] = [];
+    const rowBySourceId = new Map<string, FundingRow>();
+
     for (const hit of hits) {
+      if (pageRows.length >= remainingBeforePage) break;
       const raw = hit as unknown as Record<string, unknown>;
       if (isClosedStatus(hit.opportunity_status)) {
         skippedClosed += 1;
@@ -624,41 +635,38 @@ export async function syncSimplerGrantsToSupabase(
         errors.push("skip hit: empty source_opportunity_id after trim");
         continue;
       }
+      rowBySourceId.set(row.source_opportunity_id, row);
+      pageRows.push(row);
+    }
 
-      const { error } = await supabase.from("funding_opportunities").upsert(row, {
-        onConflict: "source_system,source_opportunity_id",
-      });
-      if (error) {
-        errors.push(`upsert ${row.source_opportunity_id}: ${error.message}`);
-        continue;
-      }
-      upserted += 1;
-
-      const { data: fo } = await supabase
+    if (pageRows.length > 0) {
+      const { data: upData, error: upErr } = await supabase
         .from("funding_opportunities")
-        .select("id")
-        .eq("source_system", "simpler_grants")
-        .eq("source_opportunity_id", row.source_opportunity_id)
-        .maybeSingle();
-
-      if (fo?.id) {
-        const feats = extractOpportunityFeatures({
-          title: row.title,
-          description: row.description ?? "",
-          category: row.category,
-          funding_instrument: row.funding_instrument,
-        });
-        await supabase.from("opportunity_features").upsert(
-          {
-            opportunity_id: fo.id,
-            ...feats,
-          },
-          { onConflict: "opportunity_id" }
-        );
-      }
-
-      if (upserted >= maxNofos) {
-        break;
+        .upsert(pageRows, { onConflict: "source_system,source_opportunity_id" })
+        .select("id, source_opportunity_id");
+      if (upErr) {
+        errors.push(`upsert page ${page}: ${upErr.message}`);
+      } else {
+        upserted += upData?.length ?? 0;
+        const featureRows = (upData ?? [])
+          .map((r: { id: string; source_opportunity_id: string }) => {
+            const src = rowBySourceId.get(r.source_opportunity_id);
+            if (!src) return null;
+            const feats = extractOpportunityFeatures({
+              title: src.title,
+              description: src.description ?? "",
+              category: src.category,
+              funding_instrument: src.funding_instrument,
+            });
+            return { opportunity_id: r.id, ...feats };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null);
+        if (featureRows.length > 0) {
+          const { error: featErr } = await supabase
+            .from("opportunity_features")
+            .upsert(featureRows, { onConflict: "opportunity_id" });
+          if (featErr) errors.push(`features page ${page}: ${featErr.message}`);
+        }
       }
     }
 
