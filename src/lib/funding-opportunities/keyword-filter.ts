@@ -34,17 +34,19 @@ export type FundingListAgencySelection = {
 };
 
 /**
- * Apply keyword (OR across text columns) and/or agency filters with correct AND semantics
- * when both are present (PostgREST `and=(or(...keyword),or(...agency))` via nested `or`).
+ * Apply keyword, department/agency, and NIH institute/center filters with AND semantics
+ * across the three groups (a row must satisfy every active group), while keeping OR semantics
+ * inside each group (any selected department/keyword matches).
  *
- * NIH institute/center tokens (`nihIcForOrOverlap`) are OR-combined with department/legacy
- * agency clauses — not AND — so rows match either the department filter or the IC token filter.
+ * Built as a PostgREST logic tree `and(or(...keyword),or(...agency),nih_ic_tokens.ov.{...})`.
+ * The NIH IC clause is AND-combined so selecting institutes narrows results to those institutes
+ * (previously it was OR-combined, which let the broad department filter match every NIH row).
  */
 export function applyFundingListOrFilters<T extends { or: (s: string) => T }>(
   query: T,
   keywordRaw: string | undefined,
   agency: FundingListAgencySelection,
-  nihIcForOrOverlap: string[] = []
+  nihIcForOverlap: string[] = []
 ): T {
   const kw = buildKeywordOrFilter(keywordRaw ?? "");
   const deptSet = new Set(agency.departments);
@@ -60,19 +62,20 @@ export function applyFundingListOrFilters<T extends { or: (s: string) => T }>(
   const legacyOr =
     !hasModern && agency.legacyAgencies.length > 0 ? buildAgencyOrFilter(agency.legacyAgencies) : null;
   const deptCombined = modernOr ?? legacyOr;
-  const icOr = buildNihIcTokensOverlapOrFilter(nihIcForOrOverlap);
+  const icOverlap = buildNihIcTokensOverlapOrFilter(nihIcForOverlap);
 
-  let ag: string | null = null;
-  if (deptCombined && icOr) {
-    ag = `${deptCombined},${icOr}`;
-  } else if (deptCombined) {
-    ag = deptCombined;
-  } else if (icOr) {
-    ag = icOr;
+  // Each entry is one AND-group; keyword/agency keep OR semantics internally, IC overlap is a single clause.
+  const andTerms: string[] = [];
+  if (kw) andTerms.push(`or(${kw})`);
+  if (deptCombined) andTerms.push(`or(${deptCombined})`);
+  if (icOverlap) andTerms.push(icOverlap);
+
+  if (andTerms.length === 0) return query;
+  // Single active group: emit it directly (avoids a redundant and(...) wrapper).
+  if (andTerms.length === 1) {
+    if (kw && !deptCombined && !icOverlap) return query.or(kw);
+    if (deptCombined && !kw && !icOverlap) return query.or(deptCombined);
+    return query.or(icOverlap as string);
   }
-
-  if (kw && ag) return query.or(`and(or(${kw}),or(${ag}))`);
-  if (kw) return query.or(kw);
-  if (ag) return query.or(ag);
-  return query;
+  return query.or(`and(${andTerms.join(",")})`);
 }

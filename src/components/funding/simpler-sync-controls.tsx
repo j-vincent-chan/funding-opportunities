@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
   extractOpportunityFeaturesAll,
   syncFundingOpportunities,
-  syncFundingOpportunitiesTest10,
 } from "@/app/actions/funding-opportunities-pipeline";
 
 type SyncOk = {
@@ -63,24 +62,6 @@ export function SimplerSyncControls({ editorial = false }: { editorial?: boolean
         }}
       >
         {busy === "sync" ? "Syncing…" : "Sync Simpler"}
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        className={editorial ? editorialBtn : ""}
-        disabled={busy !== null}
-        onClick={async () => {
-          setBusy("sync10");
-          setLog(null);
-          const r = await syncFundingOpportunitiesTest10();
-          setBusy(null);
-          if ("error" in r && r.error) setLog(r.error);
-          else if ("upserted" in r) {
-            setLog(formatSyncLog("Test sync (max 10 opportunities)", r));
-          }
-        }}
-      >
-        {busy === "sync10" ? "Syncing…" : "Sync Simpler (10, test)"}
       </Button>
       <Button
         type="button"

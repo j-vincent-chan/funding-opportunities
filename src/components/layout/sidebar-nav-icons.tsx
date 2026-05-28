@@ -71,9 +71,8 @@ export function SidebarIconSignOut(props: IconProps) {
 /** Collapse rail — chevron points left */
 export function SidebarIconPanelClose(props: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden {...props}>
-      <path d="M15 6 9 12l6 6" />
-      <path d="M4 5v14" opacity={0.35} />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="M14 7 9 12l5 5" />
     </svg>
   );
 }
@@ -81,9 +80,8 @@ export function SidebarIconPanelClose(props: IconProps) {
 /** Expand rail — chevron points right */
 export function SidebarIconPanelOpen(props: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden {...props}>
-      <path d="M9 6 15 12l-6 6" />
-      <path d="M4 5v14" opacity={0.35} />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...props}>
+      <path d="M10 7 15 12l-5 5" />
     </svg>
   );
 }

@@ -17,9 +17,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Research Development Intelligence",
+  title: "Prospera",
   description:
-    "Funding opportunities and investigator AI-Assisted Matches.",
+    "Funding opportunities, investigator matching, and research community intelligence at UCSF.",
 };
 
 export default function RootLayout({

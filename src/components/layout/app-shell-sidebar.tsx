@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { signOut } from "@/app/actions/auth";
+import { ProsperaLogo } from "@/components/layout/prospera-logo";
 import { PoweredByOcr } from "@/components/layout/powered-by-ocr";
 import {
   SidebarIconCommunity,
@@ -17,7 +18,7 @@ import {
   SidebarIconSignOut,
 } from "@/components/layout/sidebar-nav-icons";
 
-const SIDEBAR_COLLAPSED_KEY = "pursuit-queue-sidebar-collapsed";
+const SIDEBAR_COLLAPSED_KEY = "prospera-sidebar-collapsed";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -157,59 +158,42 @@ export function AppShellSidebar({ userEmail }: { userEmail?: string | null }) {
       }`}
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="hidden justify-end px-2 pb-1 pt-0 md:flex">
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            className="rounded-xl p-2 text-[var(--fo-ink-muted)] transition-colors hover:bg-[var(--fo-nav-hover-bg)] hover:text-[var(--fo-title)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fo-focus-ring)]"
-            aria-expanded={!collapsedDesktop}
-            aria-controls="app-sidebar-primary"
-            title={collapsedDesktop ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsedDesktop ? (
-              <SidebarIconPanelOpen className="h-5 w-5" aria-hidden />
-            ) : (
-              <SidebarIconPanelClose className="h-5 w-5" aria-hidden />
-            )}
-          </button>
+        <div className="px-3 pb-2 pt-1 md:hidden">
+          <ProsperaLogo variant="sidebar" />
         </div>
 
-        <div className={`px-3 pb-2 pt-1 md:px-4 md:pb-4 ${collapsedDesktop ? "md:px-2" : ""}`}>
-          <Link
-            href="/dashboard"
-            title="Research intelligence — home"
-            className={`block rounded-2xl border border-[var(--fo-sidebar-border)] bg-[var(--fo-sidebar-surface-elevated)] shadow-md ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_6%,transparent)] transition-[box-shadow,border-color] duration-200 hover:border-[var(--fo-line-hover)] hover:shadow-lg ${
-              collapsedDesktop ? "md:px-2 md:py-3" : "px-4 py-3.5"
-            }`}
-          >
-            {collapsedDesktop ? (
-              <>
-                <span className="hidden text-xs font-bold tracking-tight text-[var(--fo-interaction)] md:flex md:h-10 md:w-full md:items-center md:justify-center md:rounded-xl md:bg-[var(--fo-paper-2)]">
-                  RI
-                </span>
-                <span className="md:hidden">
-                  <span className="block text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[var(--fo-sidebar-heading)]">
-                    Workspace
-                  </span>
-                  <span className="mt-1.5 block text-base font-semibold leading-snug tracking-tight text-[var(--fo-sidebar-fg)]">
-                    Research intelligence
-                  </span>
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="block text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[var(--fo-sidebar-heading)]">
-                  Workspace
-                </span>
-                <span className="mt-1.5 block text-base font-semibold leading-snug tracking-tight text-[var(--fo-sidebar-fg)]">
-                  Research intelligence
-                </span>
-                <span className="mt-1.5 hidden text-xs font-normal leading-relaxed text-[var(--fo-sidebar-fg-muted)] md:block">
-                  Funding, matching, and investigator portfolio
-                </span>
-              </>
-            )}
-          </Link>
+        <div className={`hidden pb-4 pt-1 md:block ${collapsedDesktop ? "md:px-2" : "md:px-4"}`}>
+          {collapsedDesktop ? (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--fo-border)] bg-[var(--fo-sidebar-surface-elevated)] text-[var(--fo-ink-muted)] shadow-sm transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fo-focus-ring)]"
+                aria-expanded={false}
+                aria-controls="app-sidebar-primary"
+                title="Expand sidebar"
+              >
+                <SidebarIconPanelOpen className="h-4 w-4" aria-hidden />
+              </button>
+              <ProsperaLogo variant="sidebar-collapsed" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <ProsperaLogo variant="sidebar" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--fo-border)] bg-[var(--fo-sidebar-surface-elevated)] text-[var(--fo-ink-muted)] shadow-sm transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fo-focus-ring)]"
+                aria-expanded
+                aria-controls="app-sidebar-primary"
+                title="Collapse sidebar"
+              >
+                <SidebarIconPanelClose className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          )}
         </div>
 
         <nav

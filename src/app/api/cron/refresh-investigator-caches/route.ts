@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cron/authorize-cron-request";
 import {
   formatBulkRefreshSummary,
   refreshAllInvestigatorsCommunityCaches,
@@ -9,16 +10,13 @@ export const maxDuration = 300;
 
 /**
  * Refresh PubMed + NIH RePORTER caches for all investigators, then recompute co-authorship edges.
+ * Vercel Cron uses GET; manual runs may use POST.
  * Headers: Authorization: Bearer <CRON_SECRET>
  * Requires SUPABASE_SERVICE_ROLE_KEY.
  */
-export async function POST(req: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!secret || token !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+async function handleRefreshInvestigatorCaches(req: Request) {
+  const denied = authorizeCronRequest(req);
+  if (denied) return denied;
 
   const supabase = createServiceRoleClient();
   if (!supabase) {
@@ -39,4 +37,12 @@ export async function POST(req: Request) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
+}
+
+export async function GET(req: Request) {
+  return handleRefreshInvestigatorCaches(req);
+}
+
+export async function POST(req: Request) {
+  return handleRefreshInvestigatorCaches(req);
 }

@@ -8,40 +8,40 @@
   --fo-radius-lg: 1.125rem;
   --fo-radius-xl: 1.375rem;
 
-  /* Foundation — canvas < panel < shelf (metrics) < card < warm inset */
-  --fo-canvas: #f7f8f6;
-  --fo-panel: #ebeef2;
-  --fo-panel-shelf: #e4ebf2;
+  /* Foundation — Prospera palette (navy / teal / mint) */
+  --fo-canvas: #e6ebf1;
+  --fo-panel: #dce4ec;
+  --fo-panel-shelf: #d4e0ea;
   --fo-paper: #ffffff;
   --fo-paper-read: #fcfdfd;
-  --fo-paper-2: #f3f5f7;
-  --fo-subpanel: #f6f8fa;
-  --fo-inset: #f2f1ef;
-  --fo-border: #d7dee7;
-  --fo-border-strong: #c4ced9;
-  --fo-divider: #d6dde5;
+  --fo-paper-2: #eef2f7;
+  --fo-subpanel: #f4f7fa;
+  --fo-inset: #e8edf3;
+  --fo-border: #c5d2de;
+  --fo-border-strong: #a8bac9;
+  --fo-divider: #cdd8e3;
 
-  --fo-ink: #1f2937;
-  --fo-ink-body: #5b6676;
-  --fo-ink-muted: #7a8594;
-  --fo-ink-faint: #8e98a6;
-  --fo-title: #1a2230;
-  --fo-display: #111827;
+  --fo-ink: #0b1d3a;
+  --fo-ink-body: #3d5168;
+  --fo-ink-muted: #5a6d82;
+  --fo-ink-faint: #6d8094;
+  --fo-title: #0b1d3a;
+  --fo-display: #0b1d3a;
   --fo-section-label: #556070;
   --fo-metadata: #4a5568;
 
   --fo-line: var(--fo-divider);
   --fo-line-hover: #c5ced8;
 
-  /* Primary — disciplined blue (active chrome, links, focus) */
-  --fo-brand: #3d5f80;
-  --fo-accent: #1f5e95;
-  --fo-accent-emphasis: #174a76;
-  --fo-interaction: #1f5e95;
-  --fo-interaction-hover: #174a76;
-  --fo-select-tint: #eaf2fa;
-  --fo-sage: #2f6b45;
-  --fo-sage-soft: #eaf6ee;
+  /* Primary — Prospera teal (active chrome, links, focus) */
+  --fo-brand: #0e6b78;
+  --fo-accent: #22b8c5;
+  --fo-accent-emphasis: #0e6b78;
+  --fo-interaction: #0e6b78;
+  --fo-interaction-hover: #0b1d3a;
+  --fo-select-tint: #e3f6f8;
+  --fo-sage: #6bbf6a;
+  --fo-sage-soft: #e8f6ea;
 
   /* Community / list markers — neutral slate & green (not ambient blue wash) */
   --fo-stripe-0: #5b6676;
@@ -75,8 +75,8 @@
   --fo-table-edge: #cdd6e0;
   --fo-table-head-fg: #111827;
 
-  --fo-focus-ring: rgba(31, 94, 149, 0.24);
-  --fo-focus-border: #3a7ab5;
+  --fo-focus-ring: rgba(14, 107, 120, 0.28);
+  --fo-focus-border: #22b8c5;
 
   --fo-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.055);
   --fo-shadow-surface: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 10px rgba(15, 23, 42, 0.065);
@@ -85,9 +85,9 @@
   --fo-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.94);
 
   /* Sidebar — distinct cool rail vs canvas */
-  --fo-sidebar-surface: #dfe6ef;
-  --fo-sidebar-surface-elevated: #eef2f7;
-  --fo-sidebar-border: #c9d3df;
+  --fo-sidebar-surface: #d8e4ec;
+  --fo-sidebar-surface-elevated: #eef3f8;
+  --fo-sidebar-border: #b8cad8;
   --fo-sidebar-fg: #1a2230;
   --fo-sidebar-fg-muted: #5b6676;
   --fo-sidebar-heading: #66758a;

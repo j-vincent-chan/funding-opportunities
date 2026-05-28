@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardBody } from "@/components/ui/card";
+import { ProsperaLogo } from "@/components/layout/prospera-logo";
 import { PoweredByOcr } from "@/components/layout/powered-by-ocr";
 
 export default function LoginPage() {
@@ -36,14 +37,13 @@ export default function LoginPage() {
 
   return (
     <div className="app-editorial-root flex min-h-screen flex-col items-center justify-center bg-[var(--fo-canvas)] px-4 pb-10 pt-8">
+      <div className="mb-6 w-full max-w-md">
+        <ProsperaLogo variant="login" linked={false} />
+      </div>
       <Card className="w-full max-w-md border-l-[4px] border-l-[color-mix(in_srgb,var(--fo-accent)_80%,var(--fo-border))] shadow-lift">
         <div className="border-b border-[var(--border)] bg-[var(--fo-paper-2)] px-4 py-4">
-          <h1 className="text-lg font-semibold text-[var(--fo-title)]">
-            Research Development Intelligence
-          </h1>
-          <p className="mt-1 text-sm text-[var(--fo-ink-body)]">
-            Sign in with your institutional email.
-          </p>
+          <h1 className="sr-only">Prospera</h1>
+          <p className="text-sm text-[var(--fo-ink-body)]">Sign in with your institutional email.</p>
         </div>
         <CardBody>
           <form onSubmit={onSubmit} className="space-y-4">

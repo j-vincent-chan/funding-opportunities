@@ -291,7 +291,7 @@ export default async function FundingOpportunitiesPage({
     <div className="mx-auto flex min-h-0 w-full max-w-full flex-1 flex-col">
         <header className="mb-8 pt-2">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[var(--fo-ink-muted)]">
-            Research intelligence
+            Prospera
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--fo-title)] sm:text-4xl lg:text-[2.5rem] lg:leading-tight">
             Find funding opportunities
@@ -300,32 +300,6 @@ export default async function FundingOpportunitiesPage({
             Search notices from Simpler.Grants.gov, narrow with <strong className="font-semibold text-[var(--fo-title)]">Refine</strong>, then open a row for
             details.
           </p>
-          <ol className="mt-5 flex flex-wrap gap-2 text-xs font-semibold sm:text-sm" aria-label="How to use this page">
-            <li className="inline-flex items-center gap-2 rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-[var(--fo-title)] shadow-soft">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--fo-accent)] text-[0.7rem] text-[var(--fo-on-accent)]">
-                1
-              </span>
-              Search
-            </li>
-            <li className="hidden text-[var(--fo-ink-faint)] sm:inline" aria-hidden>
-              →
-            </li>
-            <li className="inline-flex items-center gap-2 rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-[var(--fo-title)] shadow-soft">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--fo-brand)_92%,black)] text-[0.7rem] text-[var(--fo-on-accent)]">
-                2
-              </span>
-              Refine
-            </li>
-            <li className="hidden text-[var(--fo-ink-faint)] sm:inline" aria-hidden>
-              →
-            </li>
-            <li className="inline-flex items-center gap-2 rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-[var(--fo-title)] shadow-soft">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--fo-sage)] text-[0.7rem] text-[var(--fo-on-accent)]">
-                3
-              </span>
-              Open a notice
-            </li>
-          </ol>
         </header>
 
         <div className="mb-8">
@@ -563,32 +537,30 @@ export default async function FundingOpportunitiesPage({
             </details>
           </div>
 
-          <aside className="order-1 w-full shrink-0 self-start md:order-2 md:w-[min(100%,17rem)] lg:w-[min(100%,18rem)] xl:w-72">
-            <div className="sticky top-4 z-30 max-h-[min(calc(100dvh-4rem),calc(100vh-4rem))] overflow-y-auto overscroll-y-contain pb-1 sm:top-6 sm:max-h-[min(calc(100dvh-4.5rem),calc(100vh-4.5rem))]">
-              <div className="fo-filter-rail overflow-hidden">
-                <div className="fo-filter-rail-header px-5 py-5">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-inherit opacity-95">
-                    Refine
-                  </p>
-                  <p className="mt-1 text-[0.8125rem] font-semibold leading-snug text-inherit">
-                    Narrow your list
-                  </p>
-                  <p className="mt-1 text-[0.75rem] leading-snug text-inherit opacity-90">
-                    Sort, agency scope, and research triage filters
-                  </p>
-                </div>
-                <div className="px-4 py-5 sm:px-5">
-                  <FundingOpportunitiesFiltersPanel editorial />
-                  <Suspense
-                    fallback={
-                      <div className="mt-6 border-t border-[var(--fo-divider)] pt-5 text-[0.75rem] text-[var(--fo-ink-muted)]">
-                        Loading saved items…
-                      </div>
-                    }
-                  >
-                    <FundingSearchBookmarksRail loggedIn={!!user} savedSearches={savedSearchLinks} />
-                  </Suspense>
-                </div>
+          <aside className="order-1 w-full shrink-0 self-start md:order-2 md:w-[min(100%,20rem)] lg:w-[min(100%,21rem)] xl:w-80">
+            <div className="fo-filter-rail overflow-hidden">
+              <div className="fo-filter-rail-header px-5 py-5">
+                <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-inherit opacity-95">
+                  Refine
+                </p>
+                <p className="mt-1 text-[0.8125rem] font-semibold leading-snug text-inherit">
+                  Narrow your list
+                </p>
+                <p className="mt-1 text-[0.75rem] leading-snug text-inherit opacity-90">
+                  Sort, agency scope, and research triage filters
+                </p>
+              </div>
+              <div className="px-4 py-5 pb-6 sm:px-5">
+                <FundingOpportunitiesFiltersPanel editorial />
+                <Suspense
+                  fallback={
+                    <div className="mt-6 border-t border-[var(--fo-divider)] pt-5 text-[0.75rem] text-[var(--fo-ink-muted)]">
+                      Loading saved items…
+                    </div>
+                  }
+                >
+                  <FundingSearchBookmarksRail loggedIn={!!user} savedSearches={savedSearchLinks} />
+                </Suspense>
               </div>
             </div>
           </aside>

@@ -2,22 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createSimplerGrantsClient } from "@/lib/ingestion/simpler-grants/client";
-import {
-  DEFAULT_MAX_NOFOS_PER_SYNC,
-  syncSimplerGrantsToSupabase,
-} from "@/lib/services/simpler-grants-sync";
+import { DEFAULT_MAX_NOFOS_PER_SYNC } from "@/lib/services/simpler-grants-sync";
 import { extractOpportunityFeatures } from "@/lib/funding-opportunities/extract-opportunity-features";
 import { buildRdSignalColumns } from "@/lib/funding-opportunities/rd-signals";
-import { finishSyncJobLog, startSyncJobLog } from "@/lib/services/sync-job-log";
+import { runSimplerGrantsSyncJob } from "@/lib/services/run-simpler-grants-sync-job";
 
 /** Form-friendly wrapper (returns void for Next.js <form action>). */
 export async function syncFundingOpportunitiesForm(formData: FormData): Promise<void> {
   void formData;
   await syncFundingOpportunities();
 }
-
-const SYNC_PAGE_SIZE = 50;
 
 function clampSyncMaxNofos(requested?: number): number {
   if (requested == null || Number.isNaN(requested)) return DEFAULT_MAX_NOFOS_PER_SYNC;
@@ -31,42 +25,20 @@ async function syncFundingOpportunitiesWithCap(maxNofosPerRun: number) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const client = createSimplerGrantsClient();
-  if (!client) {
-    return { error: "SIMPLER_GRANTS_API_KEY is not configured" };
-  }
-
   const cap = clampSyncMaxNofos(maxNofosPerRun);
-  const logId = await startSyncJobLog(supabase, "simpler_grants_sync", { maxNofosPerRun: cap });
+  const result = await runSimplerGrantsSyncJob(supabase, {
+    maxNofosPerRun: cap,
+    source: "ui",
+  });
+  if (!result.ok) return { error: result.error };
 
-  try {
-    const result = await syncSimplerGrantsToSupabase(supabase, client, {
-      pageSize: SYNC_PAGE_SIZE,
-      maxNofosPerRun: cap,
-    });
-    if (logId) {
-      await finishSyncJobLog(supabase, logId, result.errors.length === 0, undefined, {
-        ...result,
-        maxNofosPerRun: cap,
-      });
-    }
-    revalidatePath("/funding-opportunities");
-    return { ok: true as const, ...result, maxNofosPerRun: cap };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (logId) await finishSyncJobLog(supabase, logId, false, msg);
-    return { error: msg };
-  }
+  revalidatePath("/funding-opportunities");
+  return { ok: true as const, ...result };
 }
 
 /** Full sync up to {@link DEFAULT_MAX_NOFOS_PER_SYNC} opportunities. */
 export async function syncFundingOpportunities() {
   return syncFundingOpportunitiesWithCap(DEFAULT_MAX_NOFOS_PER_SYNC);
-}
-
-/** Test sync: only the first 10 opportunities (same API filters, smaller cap). */
-export async function syncFundingOpportunitiesTest10() {
-  return syncFundingOpportunitiesWithCap(10);
 }
 
 export async function extractOpportunityFeaturesAllForm(formData: FormData): Promise<void> {

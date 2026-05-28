@@ -76,17 +76,19 @@ export function FundingSearchBookmarksRail({
             placeholder="Name this search"
             className="w-full rounded-md border border-[var(--fo-border)] bg-[var(--fo-paper)] px-2.5 py-1.5 text-xs font-medium text-[var(--fo-title)] placeholder:text-[var(--fo-ink-muted)]"
           />
-          <label className="flex cursor-pointer items-start gap-2 text-[0.75rem] font-medium leading-snug text-[var(--fo-ink-body)]">
+          <label className="flex cursor-pointer items-start gap-2.5 text-[0.75rem] font-medium leading-relaxed text-[var(--fo-ink-body)]">
             <input
               type="checkbox"
               checked={notifyOnSave}
               onChange={(e) => setNotifyOnSave(e.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[var(--fo-border)]"
+              className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-[var(--fo-border)]"
             />
-            <span>
+            <span className="min-w-0">
               Email me when <strong className="font-semibold text-[var(--fo-title)]">posted</strong> or{" "}
-              <strong className="font-semibold text-[var(--fo-title)]">forecasted</strong> notices match this search
-              (requires Resend + cron on the server).
+              <strong className="font-semibold text-[var(--fo-title)]">forecasted</strong> notices match this search.
+              <span className="mt-1 block text-[0.7rem] font-normal leading-snug text-[var(--fo-ink-muted)]">
+                Requires Resend and the funding-search-notifications cron on the server.
+              </span>
             </span>
           </label>
           <Button
@@ -112,10 +114,8 @@ export function FundingSearchBookmarksRail({
             {pendingSave ? "Saving…" : "Save current search"}
           </Button>
         </div>
-        <p className="mt-3 text-[0.7rem] leading-snug text-[var(--fo-ink-muted)]">
-          Alerts consider notices whose row was updated in the last ~72 hours, deduplicated per notice. Schedule{" "}
-          <code className="rounded bg-[var(--fo-paper)] px-1 py-0.5 text-[0.65rem]">POST /api/cron/funding-search-notifications</code>{" "}
-          with <code className="rounded bg-[var(--fo-paper)] px-1 py-0.5 text-[0.65rem]">CRON_SECRET</code>.
+        <p className="mt-3 text-[0.7rem] leading-relaxed text-[var(--fo-ink-muted)]">
+          Alerts consider notices updated in the last ~72 hours (deduplicated per notice).
         </p>
         {savedSearches.length === 0 ? (
           <p className="mt-2 text-[0.75rem] text-[var(--fo-ink-muted)]">No saved searches yet.</p>
