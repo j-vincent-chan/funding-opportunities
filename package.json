@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
-    "refresh-investigator-caches": "tsx scripts/refresh-all-investigator-caches.ts"
+    "refresh-investigator-caches": "tsx scripts/refresh-all-investigator-caches.ts",
+    "annotate-portfolio-documents": "tsx scripts/annotate-portfolio-documents.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

@@ -29,7 +29,7 @@ const TAGLINE_GRADIENT =
 
 export function ProsperaLogo({
   variant,
-  href = "/dashboard",
+  href = "/funding-opportunities",
   linked = true,
   className = "",
 }: ProsperaLogoProps) {

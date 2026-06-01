@@ -7,15 +7,16 @@ import { signOut } from "@/app/actions/auth";
 import { ProsperaLogo } from "@/components/layout/prospera-logo";
 import { PoweredByOcr } from "@/components/layout/powered-by-ocr";
 import {
-  SidebarIconCommunity,
-  SidebarIconDashboard,
   SidebarIconInvestigators,
   SidebarIconMatch,
   SidebarIconPanelClose,
   SidebarIconPanelOpen,
+  SidebarIconPortfolio,
+  SidebarIconSavedList,
   SidebarIconSearch,
   SidebarIconSettings,
   SidebarIconSignOut,
+  SidebarIconUpload,
 } from "@/components/layout/sidebar-nav-icons";
 
 const SIDEBAR_COLLAPSED_KEY = "prospera-sidebar-collapsed";
@@ -31,57 +32,43 @@ type NavItem = {
 
 const sections: { heading: string; items: NavItem[] }[] = [
   {
-    heading: "Start",
-    items: [
-      {
-        href: "/dashboard",
-        label: "Dashboard",
-        Icon: SidebarIconDashboard,
-        isActive: (p) => p === "/dashboard" || p === "/",
-      },
-    ],
-  },
-  {
-    heading: "Opportunities",
+    heading: "Workspace",
     items: [
       {
         href: "/funding-opportunities",
-        label: "Search",
+        label: "Opportunities",
         Icon: SidebarIconSearch,
-        isActive: (p) => p.startsWith("/funding-opportunities"),
+        isActive: (p) => p === "/" || p.startsWith("/funding-opportunities"),
       },
-    ],
-  },
-  {
-    heading: "Matching",
-    items: [
       {
-        href: "/match/saved",
-        label: "Match",
-        Icon: SidebarIconMatch,
-        isActive: (p) => p === "/match" || p.startsWith("/match/"),
+        href: "/portfolio-intelligence",
+        label: "Portfolio Intelligence",
+        Icon: SidebarIconPortfolio,
+        isActive: (p) => p.startsWith("/portfolio-intelligence"),
       },
-    ],
-  },
-  {
-    heading: "Community",
-    items: [
-      {
-        href: "/pi-community",
-        label: "Community Snapshot",
-        Icon: SidebarIconCommunity,
-        isActive: (p) => p.startsWith("/pi-community"),
-      },
-    ],
-  },
-  {
-    heading: "People",
-    items: [
       {
         href: "/investigators",
         label: "Investigators",
         Icon: SidebarIconInvestigators,
         isActive: (p) => p.startsWith("/investigators"),
+      },
+      {
+        href: "/match/quick",
+        label: "Matchmaker",
+        Icon: SidebarIconMatch,
+        isActive: (p) => p.startsWith("/match/quick"),
+      },
+      {
+        href: "/match/saved",
+        label: "Saved Lists",
+        Icon: SidebarIconSavedList,
+        isActive: (p) => p === "/match" || p.startsWith("/match/saved"),
+      },
+      {
+        href: "/upload",
+        label: "Upload",
+        Icon: SidebarIconUpload,
+        isActive: (p) => p.startsWith("/upload"),
       },
     ],
   },

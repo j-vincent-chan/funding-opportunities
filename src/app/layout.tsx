@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   title: "Prospera",
   description:
     "Funding opportunities, investigator matching, and research community intelligence at UCSF.",
+  icons: {
+    icon: [
+      { url: "/brand/prospera-favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/prospera-app-icon.png", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/prospera-app-icon.png", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({

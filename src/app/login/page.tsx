@@ -31,7 +31,7 @@ export default function LoginPage() {
       setError(signErr.message);
       return;
     }
-    router.replace("/dashboard");
+    router.replace("/funding-opportunities");
     router.refresh();
   }
 

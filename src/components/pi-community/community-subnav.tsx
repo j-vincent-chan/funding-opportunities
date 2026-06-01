@@ -4,18 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { href: "/pi-community", label: "Overview" },
-  { href: "/pi-community/engagements", label: "Engagements" },
+  { href: "/portfolio-intelligence", label: "Overview" },
+  { href: "/portfolio-intelligence/data-sources", label: "Data sources" },
+  { href: "/portfolio-intelligence/engagements", label: "Engagements" },
 ];
 
 export function CommunitySubnav() {
   const pathname = usePathname() ?? "";
   return (
-    <nav className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+    <nav className="flex flex-wrap gap-2 border-b border-[var(--border)] pb-3">
       {items.map((item) => {
         const active =
-          item.href === "/pi-community"
-            ? pathname === "/pi-community"
+          item.href === "/portfolio-intelligence"
+            ? pathname === "/portfolio-intelligence"
             : pathname.startsWith(item.href);
         return (
           <Link
@@ -23,8 +24,8 @@ export function CommunitySubnav() {
             href={item.href}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
               active
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100"
+                ? "bg-[var(--fo-interaction)] text-white"
+                : "text-[var(--fo-ink-muted)] hover:bg-[var(--fo-paper-2)] hover:text-[var(--fo-title)]"
             }`}
           >
             {item.label}

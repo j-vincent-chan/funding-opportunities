@@ -6,11 +6,21 @@ import {
   type FundingListClientState,
   type FundingListPageSize,
   type FundingListScope,
+  type FundingListViewTab,
 } from "@/lib/funding-opportunities/funding-list-url";
 import type { ClinicalTrialMode } from "@/lib/funding-opportunities/rd-signals";
 import type { RdListFilterState } from "@/lib/funding-opportunities/rd-list-filters";
 
 const SCOPES = new Set<FundingListScope>(["any", "all", "open", "forecasted", "closed"]);
+const TABS = new Set<FundingListViewTab>([
+  "all",
+  "recommended",
+  "closing_soon",
+  "new_this_week",
+  "large_awards",
+  "saved",
+  "immunology_translational",
+]);
 
 const trialEnum = z.enum(["unknown", "required", "allowed", "not_allowed"]);
 
@@ -30,6 +40,11 @@ function normalizePerPage(v: unknown): FundingListPageSize {
 
 function normalizeScope(v: unknown): FundingListScope {
   if (typeof v === "string" && SCOPES.has(v as FundingListScope)) return v as FundingListScope;
+  return "all";
+}
+
+function normalizeTab(v: unknown): FundingListViewTab {
+  if (typeof v === "string" && TABS.has(v as FundingListViewTab)) return v as FundingListViewTab;
   return "all";
 }
 
@@ -76,6 +91,7 @@ const fundingListClientStateSchema = z
   .object({
     q: z.string().catch(""),
     scope: z.unknown().transform(normalizeScope),
+    tab: z.unknown().transform(normalizeTab).optional(),
     sort: z.string().catch("posted_date"),
     order: z.enum(["asc", "desc"]).catch("desc"),
     page: z.number().int().positive().optional().catch(DEFAULT_FUNDING_LIST_PAGE),
@@ -91,6 +107,7 @@ const fundingListClientStateSchema = z
     return {
       q: partial.q ?? "",
       scope: typeof partial.scope === "string" ? normalizeScope(partial.scope) : normalizeScope(undefined),
+      tab: normalizeTab(partial.tab),
       sort: partial.sort ?? "posted_date",
       order: partial.order === "asc" || partial.order === "desc" ? partial.order : "desc",
       page: DEFAULT_FUNDING_LIST_PAGE,

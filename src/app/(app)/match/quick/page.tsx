@@ -37,7 +37,7 @@ export default function AiAssistedMatchesPage() {
             <p>
               Open an investigator in{" "}
               <Link href="/investigators" className="font-semibold text-[var(--fo-interaction)] underline">
-                Investigators
+                People
               </Link>
               . The profile shows AI-Assisted Matches tags and the top 10 opportunities (from recently synced rows).
             </p>

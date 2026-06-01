@@ -138,9 +138,11 @@ Other cron routes (same `CRON_SECRET`):
 | `/funding-opportunities/[id]` | NOFO detail, features, matches, cutoff |
 | `/investigators` | PI directory + CSV import |
 | `/investigators/[id]` | Profile + ranked funding matches |
-| `/pi-community` | Community intelligence overview: tags, AI narrative, PubMed/RePORTER/engagement KPIs |
-| `/pi-community/engagements` | Strategist engagement list + create |
-| `/pi-community/engagements/[id]` | Edit engagement |
+| `/portfolio-intelligence` | Watched-community overview, investigator drill-down, community view |
+| `/portfolio-intelligence/data-sources` | PubMed / RePORTER / CT bulk refresh, signal sync, UCSF News backfill |
+| `/portfolio-intelligence/engagements` | Strategist engagement list + create |
+| `/portfolio-intelligence/engagements/[id]` | Edit engagement |
+| `/pi-community` | Redirects to `/portfolio-intelligence` (legacy URL) |
 | `/admin/matching` | Review queue, batch jobs, sync logs (admin) |
 | `/settings` | Profile readout |
 

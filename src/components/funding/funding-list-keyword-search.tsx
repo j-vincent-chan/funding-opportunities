@@ -59,9 +59,11 @@ function FundingListKeywordSearchInner({ editorial }: { editorial: boolean }) {
       <div className={shell}>
         <div className="fo-search-head">
           <label htmlFor="funding-list-q" className={labelCls}>
-            Search opportunities
+            Search the funding database
           </label>
-          <p className={hintCls}>Title, description, or opportunity number.</p>
+          <p className={hintCls}>
+            Use this for title, keyword, opportunity number, agency, mechanism, or topic.
+          </p>
         </div>
         <div className="fo-search-field">
           <input
@@ -77,7 +79,7 @@ function FundingListKeywordSearchInner({ editorial }: { editorial: boolean }) {
               if (qDebounce.current) clearTimeout(qDebounce.current);
               navigate({ q: qDraft, page: DEFAULT_FUNDING_LIST_PAGE });
             }}
-            placeholder="e.g. immunotherapy, R01, PAR-23-…"
+            placeholder="Search by title, keyword, mechanism, opportunity number, or agency…"
             maxLength={200}
             className={inputCls}
           />
@@ -89,9 +91,11 @@ function FundingListKeywordSearchInner({ editorial }: { editorial: boolean }) {
   return (
     <div className={shell}>
       <label htmlFor="funding-list-q" className={labelCls}>
-        Search opportunities
+        Search the funding database
       </label>
-      <p className={hintCls}>Title, description, or opportunity number.</p>
+      <p className={hintCls}>
+        Use this for title, keyword, opportunity number, agency, mechanism, or topic.
+      </p>
       <input
         id="funding-list-q"
         type="search"
@@ -105,7 +109,7 @@ function FundingListKeywordSearchInner({ editorial }: { editorial: boolean }) {
           if (qDebounce.current) clearTimeout(qDebounce.current);
           navigate({ q: qDraft, page: DEFAULT_FUNDING_LIST_PAGE });
         }}
-        placeholder="e.g. immunotherapy, R01, PAR-23-…"
+        placeholder="Search by title, keyword, mechanism, opportunity number, or agency…"
         maxLength={200}
         className={inputCls}
       />

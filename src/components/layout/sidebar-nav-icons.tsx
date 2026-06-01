@@ -49,6 +49,35 @@ export function SidebarIconInvestigators(props: IconProps) {
   );
 }
 
+export function SidebarIconPortfolio(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden {...props}>
+      <path d="M4 19V7.5h16V19" />
+      <path d="M4 11.5h16" />
+      <path d="M8 15.5v2.5M12 13.5V18M16 14.5V18" />
+      <path d="M8 4.5h8" />
+    </svg>
+  );
+}
+
+export function SidebarIconSavedList(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden {...props}>
+      <path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+export function SidebarIconUpload(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden {...props}>
+      <path d="M12 15V5" />
+      <path d="m8.5 8.5 3.5-3.5 3.5 3.5" />
+      <path d="M4 15.5V19a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-3.5" />
+    </svg>
+  );
+}
+
 export function SidebarIconSettings(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden {...props}>

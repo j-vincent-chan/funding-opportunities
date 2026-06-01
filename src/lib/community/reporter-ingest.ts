@@ -10,6 +10,9 @@
  *
  * Results are attributed to a single investigator row; multi-PI projects may still list
  * other investigators in API payloads.
+ *
+ * Only **new** awards are stored: project numbers must start with `1` (type-1 / new mechanism).
+ * Continuing renewals (e.g. leading `5`) are skipped.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,8 +21,12 @@ import {
   normalizeReporterOrgName,
   pickReporterProjectTitle,
 } from "@/lib/community/reporter-display";
+import { isNihNewGrantByProjectNum } from "@/lib/community/signal-nih-funding";
+import { AsyncRateLimiter } from "@/lib/utils/async-rate-limiter";
 
 const REPORTER_SEARCH = "https://api.reporter.nih.gov/v2/projects/search";
+const REPORTER_MIN_INTERVAL_MS = Number(process.env.REPORTER_MIN_INTERVAL_MS ?? 250);
+const reporterRateLimiter = new AsyncRateLimiter(REPORTER_MIN_INTERVAL_MS);
 
 export type ReporterIngestResult = {
   inserted: number;
@@ -46,7 +53,7 @@ function pickFiscalYear(row: Record<string, unknown>): number {
   const fy = row.fiscal_year ?? row.award_notice_date;
   if (typeof fy === "number" && Number.isFinite(fy)) return fy;
   const s = String(fy ?? "");
-  const m = s.match(/(20\d{2})/);
+  const m = s.match(/([12]\d{3})/);
   if (m) return parseInt(m[1], 10);
   return new Date().getFullYear();
 }
@@ -63,10 +70,11 @@ function parseReporterPiProfileId(raw: string | null | undefined): number | null
   return n;
 }
 
-/** Recent fiscal years to bound very large PI result sets (optional on profile-id search). */
-function recentFiscalYears(count: number): number[] {
-  const y = new Date().getFullYear();
-  return Array.from({ length: count }, (_, i) => y - i);
+const REPORTER_PAGE_SIZE = 100;
+
+function resolveReporterMaxResults(optsLimit?: number): number | null {
+  void optsLimit;
+  return null;
 }
 
 /**
@@ -78,7 +86,7 @@ export async function refreshInvestigatorReporter(
   investigatorId: string,
   opts: { limit?: number } = {}
 ): Promise<ReporterIngestResult> {
-  const limit = Math.min(100, Math.max(1, opts.limit ?? 40));
+  const maxResults = resolveReporterMaxResults(opts.limit);
 
   const { data: inv, error: invErr } = await supabase
     .from("investigators")
@@ -108,31 +116,48 @@ export async function refreshInvestigatorReporter(
   const searchText = `pi_profile_ids:[${profileId}] (from investigators.nih_profile_id)${dept ? `; context: ${dept}` : ""}`;
   const criteria: Record<string, unknown> = {
     pi_profile_ids: [profileId],
-    fiscal_years: recentFiscalYears(18),
   };
 
-  const body = {
-    criteria,
-    limit,
-    offset: 0,
-    sort_field: "fiscal_year",
-    sort_order: "desc",
-  };
+  const rows: Array<Record<string, unknown>> = [];
+  let offset = 0;
+  let truncated = false;
 
-  const res = await fetch(REPORTER_SEARCH, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  while (true) {
+    const remaining = maxResults == null ? REPORTER_PAGE_SIZE : Math.max(0, maxResults - rows.length);
+    if (remaining <= 0) break;
+    const limit = Math.min(REPORTER_PAGE_SIZE, remaining);
+    const body = {
+      criteria,
+      limit,
+      offset,
+      sort_field: "fiscal_year",
+      sort_order: "desc",
+    };
 
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`RePORTER API ${res.status}: ${t.slice(0, 400)}`);
+    const res = await reporterRateLimiter.schedule(() =>
+      fetch(REPORTER_SEARCH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      })
+    );
+
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`RePORTER API ${res.status}: ${t.slice(0, 400)}`);
+    }
+
+    const json = (await res.json()) as ReporterResponse;
+    const page = json.results ?? [];
+    rows.push(...page);
+    if (page.length < limit) break;
+    offset += page.length;
+    if (maxResults != null && rows.length >= maxResults) {
+      truncated = true;
+      break;
+    }
   }
-
-  const json = (await res.json()) as ReporterResponse;
-  const rows = json.results ?? [];
 
   // Replace cache wholesale so prior name-based or wrong-profile rows cannot linger.
   const { error: delErr } = await supabase
@@ -152,10 +177,19 @@ export async function refreshInvestigatorReporter(
     };
   }
 
+  const capWarning = truncated
+    ? `RePORTER fetch reached configured limit (${maxResults}) projects.`
+    : undefined;
+
   let inserted = 0;
+  let skippedContinuing = 0;
   const confidence = "high";
   for (const row of rows) {
     const project_num = pickProjectNum(row);
+    if (!isNihNewGrantByProjectNum(project_num)) {
+      skippedContinuing += 1;
+      continue;
+    }
     const fiscal_year = pickFiscalYear(row);
     const ic =
       normalizeReporterAgencyField(row.agency_ic_admin) ??
@@ -193,5 +227,14 @@ export async function refreshInvestigatorReporter(
     if (!error) inserted += 1;
   }
 
-  return { inserted, searchText };
+  const continuingNote =
+    skippedContinuing > 0
+      ? `Skipped ${skippedContinuing} continuing/competing renewal project(s) (project number does not start with 1).`
+      : undefined;
+
+  return {
+    inserted,
+    searchText,
+    warning: [capWarning, continuingNote].filter(Boolean).join(" ") || undefined,
+  };
 }

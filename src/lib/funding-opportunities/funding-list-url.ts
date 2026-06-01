@@ -9,6 +9,14 @@ import {
 } from "@/lib/funding-opportunities/rd-list-filters";
 
 export type FundingListScope = "any" | "all" | "open" | "forecasted" | "closed";
+export type FundingListViewTab =
+  | "all"
+  | "recommended"
+  | "closing_soon"
+  | "new_this_week"
+  | "large_awards"
+  | "saved"
+  | "immunology_translational";
 
 /** Allowed results-per-page values for the funding list. */
 export const FUNDING_LIST_PAGE_SIZES = [50, 100, 250, 500, 1000] as const;
@@ -28,6 +36,7 @@ export type FundingListSortKey =
 export type FundingListClientState = {
   q: string;
   scope: FundingListScope;
+  tab?: FundingListViewTab;
   sort: string;
   order: "asc" | "desc";
   /** 1-based page index (URL `page`). */
@@ -165,6 +174,22 @@ export function resolveListScope(searchParams: SearchParams): FundingListScope {
   return "all";
 }
 
+export function resolveListTab(searchParams: SearchParams): FundingListViewTab {
+  const raw = typeof searchParams.tab === "string" ? searchParams.tab : "";
+  if (
+    raw === "all" ||
+    raw === "recommended" ||
+    raw === "closing_soon" ||
+    raw === "new_this_week" ||
+    raw === "large_awards" ||
+    raw === "saved" ||
+    raw === "immunology_translational"
+  ) {
+    return raw;
+  }
+  return "all";
+}
+
 export function defaultSortDirForKey(key: FundingListSortKey): "asc" | "desc" {
   if (key === "posted_date") return "desc";
   return "asc";
@@ -224,6 +249,7 @@ export function searchParamsToFundingListState(searchParams: SearchParams): Fund
   return {
     q: firstStringParam(searchParams.q),
     scope: resolveListScope(searchParams),
+    tab: resolveListTab(searchParams),
     sort: sortParamForKey(sort.key),
     order: sort.dir,
     page,
@@ -239,6 +265,7 @@ export function fundingListHref(state: FundingListClientState): string {
   const p = new URLSearchParams();
   if (state.q.trim()) p.set("q", state.q.trim());
   p.set("scope", state.scope);
+  if (state.tab && state.tab !== "all") p.set("tab", state.tab);
   p.set("sort", state.sort);
   p.set("order", state.order);
   if (state.page > DEFAULT_FUNDING_LIST_PAGE) p.set("page", String(state.page));

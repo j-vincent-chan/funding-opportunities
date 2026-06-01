@@ -9,10 +9,7 @@ import {
   normalizeSingleInvestigatorForm,
   updateInvestigatorNihProfileIdFormAction,
 } from "@/app/actions/investigators-pipeline";
-import {
-  refreshInvestigatorPubMedFormAction,
-  refreshInvestigatorReporterFormAction,
-} from "@/app/actions/community-intelligence";
+import { InvestigatorCacheRefreshButtons } from "@/components/investigators/investigator-cache-refresh-buttons";
 import { extractOpportunityQuickTags } from "@/lib/quick-match/tag-opportunity";
 import { buildPiQuickMatchProfile } from "@/lib/quick-match/normalize-pi";
 import { rankOpportunitiesForPi } from "@/lib/quick-match/engine";
@@ -49,8 +46,14 @@ export default async function InvestigatorDetailPage({
     .eq("investigator_id", id)
     .maybeSingle();
 
-  const [{ data: engagements }, { data: publications }, { data: nihGrants }, { data: relRows }, { data: oppPool }] =
-    await Promise.all([
+  const [
+    { data: engagements },
+    { data: publications },
+    { data: nihGrants },
+    { data: clinicalTrials },
+    { data: relRows },
+    { data: oppPool },
+  ] = await Promise.all([
     supabase
       .from("strategist_engagements")
       .select(
@@ -72,6 +75,14 @@ export default async function InvestigatorDetailPage({
       )
       .eq("investigator_id", id)
       .order("fiscal_year", { ascending: false })
+      .limit(20),
+    supabase
+      .from("investigator_clinical_trials")
+      .select(
+        "nct_id, title, overall_status, conditions, lead_sponsor, start_date, last_update_date, match_confidence"
+      )
+      .eq("investigator_id", id)
+      .order("last_update_date", { ascending: false, nullsFirst: false })
       .limit(20),
     supabase
       .from("investigator_relationships")
@@ -115,7 +126,7 @@ export default async function InvestigatorDetailPage({
           href="/investigators"
           className="text-xs font-medium text-[var(--fo-ink-muted)] hover:text-[var(--fo-title)]"
         >
-          ← Investigators
+          ← People
         </Link>
         <h1 className="mt-2 app-page-title">{inv.full_name}</h1>
         <p className="mt-1 app-page-description">
@@ -138,34 +149,30 @@ export default async function InvestigatorDetailPage({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <form action={normalizeSingleInvestigatorForm}>
           <input type="hidden" name="investigatorId" value={id} />
           <Button type="submit" variant="secondary">
             Re-normalize profile
           </Button>
         </form>
-        <form action={refreshInvestigatorPubMedFormAction}>
-          <input type="hidden" name="investigatorId" value={id} />
-          <Button type="submit" variant="secondary">
-            Refresh PubMed
-          </Button>
-        </form>
-        <form action={refreshInvestigatorReporterFormAction}>
-          <input type="hidden" name="investigatorId" value={id} />
-          <Button type="submit" variant="secondary">
-            Refresh NIH RePORTER
-          </Button>
-        </form>
       </div>
+
+      <InvestigatorCacheRefreshButtons investigatorId={id} />
 
       <p className="text-xs text-slate-500">
         PubMed uses <code className="rounded bg-slate-100 px-1">pubmed_query_override</code> when
-        set; otherwise Lastname Firstname[Author]. Set{" "}
+        set; otherwise strict Lastname F[Author] (+ middle initial when set) AND UCSF affiliation,
+        with per-author verification. Each refresh pulls uncapped recent publications
+        (override with <code className="rounded bg-slate-100 px-1">NCBI_PUBMED_MAX_RESULTS</code>,
+        max 500). Set{" "}
         <code className="rounded bg-slate-100 px-1">NCBI_CONTACT_EMAIL</code> for E-utilities.
         NIH RePORTER only queries by <code className="rounded bg-slate-100 px-1">nih_profile_id</code>{" "}
         (numeric PI profile id from RePORTER/eRA). Without it, refresh clears any cached projects and
         does not call the API — name search is disabled to avoid unrelated PIs with the same name.
+        ClinicalTrials.gov uses the public API v2 with{" "}
+        <code className="rounded bg-slate-100 px-1">clinicaltrials_query_override</code> when set;
+        otherwise LeadInvestigator + UCSF facility search (medium confidence; verify matches).
       </p>
 
       <Card>
@@ -234,13 +241,13 @@ export default async function InvestigatorDetailPage({
       <Card>
         <CardHeader
           title="Strategist engagements"
-          description="Operational outreach tracked in Community Snapshot."
+          description="Operational outreach tracked in Community."
         />
         <CardBody className="space-y-3 text-sm">
           {(engagements ?? []).length === 0 ? (
             <p className="text-slate-500">
               No engagements — add one from{" "}
-              <Link href="/pi-community/engagements" className="text-[var(--accent)] underline">
+              <Link href="/portfolio-intelligence/engagements" className="text-[var(--accent)] underline">
                 Engagements
               </Link>
               .
@@ -353,6 +360,49 @@ export default async function InvestigatorDetailPage({
                     )}
                     <p className="mt-1 text-sm text-slate-800">{institute}</p>
                     {org ? <p className="text-xs text-slate-600">{org}</p> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Clinical trials (ClinicalTrials.gov cache)"
+          description="Studies from the public API v2; name + UCSF facility search is medium confidence."
+        />
+        <CardBody>
+          {(clinicalTrials ?? []).length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No cached trials — run Refresh ClinicalTrials.gov.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {(clinicalTrials ?? []).map((t) => {
+                const nctId = String(t.nct_id ?? "");
+                const conditions = Array.isArray(t.conditions)
+                  ? (t.conditions as string[]).filter(Boolean).slice(0, 3).join("; ")
+                  : null;
+                return (
+                  <li key={nctId}>
+                    <a
+                      className="font-medium text-[var(--accent)] hover:underline"
+                      href={`https://clinicaltrials.gov/study/${nctId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {t.title || nctId}
+                    </a>
+                    <div className="text-xs text-slate-600">
+                      {nctId}
+                      {t.overall_status ? ` · ${t.overall_status}` : ""}
+                      {conditions ? ` · ${conditions}` : ""}
+                      {t.lead_sponsor ? ` · ${t.lead_sponsor}` : ""}
+                      {" · "}
+                      {formatDate(t.last_update_date ?? t.start_date ?? null)} · {t.match_confidence}
+                    </div>
                   </li>
                 );
               })}

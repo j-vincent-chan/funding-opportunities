@@ -21,11 +21,35 @@ type ChatTurn = {
   sources?: Source[];
 };
 
-const SUGGESTIONS = [
-  "Which NIH opportunities close in the next 30 days?",
-  "Find grants about immunotherapy or T cells",
-  "How many open NCI opportunities are there?",
-  "Show forecasted cooperative agreements over $1M",
+const SUGGESTION_GROUPS: Array<{ label: string; prompts: string[] }> = [
+  {
+    label: "Find",
+    prompts: [
+      "Show new NIH opportunities posted this week",
+      "Find immunology opportunities closing in the next 90 days",
+    ],
+  },
+  {
+    label: "Compare",
+    prompts: [
+      "Compare R01 vs U01 opportunities for translational immunology",
+      "Which opportunities are best for early-stage investigators?",
+    ],
+  },
+  {
+    label: "Prioritize",
+    prompts: [
+      "Which opportunities are most worth sharing in the ImmunoX newsletter?",
+      "Which opportunities should OCR flag for grantwriting support?",
+    ],
+  },
+  {
+    label: "Plan",
+    prompts: [
+      "Create a funding calendar for cooperative agreements over $1M",
+      "What major opportunities are closing in the next 3 months?",
+    ],
+  },
 ];
 
 export function FundingChatPanel() {
@@ -91,13 +115,13 @@ export function FundingChatPanel() {
       <div className="flex items-center justify-between gap-3 border-b-2 border-[var(--fo-border)] bg-[var(--fo-paper)] px-5 py-4 sm:px-6">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold tracking-tight text-[var(--fo-title)]">Ask about opportunities</h2>
+            <h2 className="text-lg font-bold tracking-tight text-[var(--fo-title)]">Ask Prospera</h2>
             <span className="rounded-full bg-[var(--fo-paper-2)] px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-[var(--fo-ink-muted)] ring-1 ring-inset ring-[var(--fo-border)]">
               Beta
             </span>
           </div>
           <p className="mt-1 text-xs font-medium text-[var(--fo-ink-muted)]">
-            Grounded in your synced notices. Answers cite the opportunities they used.
+            Ask questions about deadlines, agencies, award sizes, topics, fit, or funding strategy.
           </p>
         </div>
         {hasConversation ? (
@@ -183,18 +207,27 @@ export function FundingChatPanel() {
         ) : (
           <div className="mb-4">
             <p className="text-sm font-medium text-[var(--fo-ink-body)]">
-              Ask a question about the funding notices in your database — deadlines, agencies, award sizes, or topics.
+              Use Ask Prospera for summaries, comparisons, prioritization, and planning across your synced notices.
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => void send(s)}
-                  className="rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-xs font-medium text-[var(--fo-ink-body)] transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)]"
-                >
-                  {s}
-                </button>
+            <div className="mt-3 space-y-3">
+              {SUGGESTION_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[var(--fo-ink-muted)]">
+                    {group.label}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.prompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => void send(prompt)}
+                        className="rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-xs font-medium text-[var(--fo-ink-body)] transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)]"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -210,7 +243,7 @@ export function FundingChatPanel() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask about deadlines, agencies, award sizes, topics…"
+            placeholder="Ask about deadlines, agencies, award sizes, topics, fit, or strategy…"
             className="block max-h-40 min-h-[3rem] w-full resize-y rounded-2xl border border-[var(--fo-border)] bg-[var(--fo-paper)] px-4 py-3 text-sm font-medium leading-snug text-[var(--fo-ink)] shadow-sm placeholder:text-[var(--fo-ink-faint)] transition-[border-color,box-shadow] hover:border-[var(--fo-line-hover)] focus:border-[var(--fo-focus-border)] focus:outline-none focus:ring-[3px] focus:ring-[var(--fo-focus-ring)]"
             disabled={loading}
           />
@@ -218,9 +251,9 @@ export function FundingChatPanel() {
             type="button"
             onClick={() => void send(input)}
             disabled={loading || !input.trim()}
-            className="shrink-0 rounded-2xl bg-[var(--fo-accent)] px-5 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-2xl bg-[var(--fo-accent)] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "…" : "Ask"}
+            {loading ? "…" : "Ask Prospera"}
           </button>
         </div>
         <p className="mt-2 text-[0.7rem] text-[var(--fo-ink-faint)]">

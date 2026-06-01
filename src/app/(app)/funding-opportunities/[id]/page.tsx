@@ -133,7 +133,7 @@ export default async function FundingOpportunityDetailPage({
         <Card>
           <CardHeader
             title="Strategist engagements (this notice)"
-            description="Linked outreach tracked in Community Snapshot."
+            description="Linked outreach tracked in Community."
           />
           <CardBody className="space-y-2 text-sm">
             {(oppEngagements ?? []).map((row) => {
@@ -157,8 +157,8 @@ export default async function FundingOpportunityDetailPage({
             })}
             <p className="text-xs text-[var(--fo-ink-muted)]">
               Create or edit engagements from{" "}
-              <Link href="/pi-community/engagements" className="text-[var(--fo-interaction)] underline">
-                Community → Engagements
+              <Link href="/portfolio-intelligence/engagements" className="text-[var(--fo-interaction)] underline">
+                Portfolio Intelligence → Engagements
               </Link>
               .
             </p>

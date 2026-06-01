@@ -11,18 +11,22 @@ export function BulkRefreshCachesPanel() {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
-      <h3 className="font-semibold text-slate-900">Refresh PubMed + RePORTER for all investigators</h3>
-      <p className="mt-1 text-slate-600">
-        Re-fetches publication lists and NIH projects for every row in the directory, then rebuilds
+      <h3 className="font-semibold text-slate-900">
+        Refresh PubMed + RePORTER + ClinicalTrials.gov for all investigators
+      </h3>
+      <p className="mt-1 text-[var(--fo-ink-muted)]">
+        Re-fetches PubMed (strict UCSF + author match), NIH RePORTER, and ClinicalTrials.gov per
+        investigator (three APIs in parallel), mirrors caches into community signals, then rebuilds
         the co-authorship graph. RePORTER only runs when{" "}
-        <code className="rounded bg-slate-100 px-1 text-xs">nih_profile_id</code> is set; others are
-        skipped (cache cleared if empty).
+        <code className="rounded bg-[var(--fo-paper-2)] px-1 text-xs">nih_profile_id</code> is set;
+        others are skipped (cache cleared if empty).
       </p>
       <p className="mt-2 text-amber-800">
         <strong>Admin only.</strong> Large directories can exceed hosting time limits — if this
         times out, run{" "}
-        <code className="rounded bg-amber-100 px-1 text-xs">npm run refresh-investigator-caches</code>{" "}
+        <code className="rounded bg-amber-100 px-1 text-xs">npm run refresh-investigator-caches -- --concurrency 6</code>{" "}
         locally (needs <code className="rounded bg-amber-100 px-1 text-xs">SUPABASE_SERVICE_ROLE_KEY</code>
+        ; set <code className="rounded bg-amber-100 px-1 text-xs">NCBI_API_KEY</code> for faster PubMed)
         ) or call{" "}
         <code className="rounded bg-amber-100 px-1 text-xs">POST /api/cron/refresh-investigator-caches</code>{" "}
         with <code className="rounded bg-amber-100 px-1 text-xs">Authorization: Bearer CRON_SECRET</code>.

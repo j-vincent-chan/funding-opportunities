@@ -1,5 +1,6 @@
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { SeedAiDocumentsCard } from "@/components/portfolio-intelligence/seed-ai-documents-card";
 
 export default async function SettingsPage() {
   const supabase = createClient();
@@ -39,6 +40,8 @@ export default async function SettingsPage() {
           </p>
         </CardBody>
       </Card>
+
+      {profile?.role === "admin" ? <SeedAiDocumentsCard /> : null}
     </div>
   );
 }

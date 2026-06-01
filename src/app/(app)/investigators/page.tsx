@@ -4,7 +4,9 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InvestigatorCsvForm } from "@/components/investigators/investigator-csv-form";
+import { InvestigatorSignalImportForm } from "@/components/investigators/investigator-signal-import-form";
 import { InvestigatorResearchCommunitySelect } from "@/components/investigators/investigator-research-community-select";
+import { InvestigatorRowActions } from "@/components/investigators/investigator-row-actions";
 import { Button } from "@/components/ui/button";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -51,16 +53,17 @@ export default async function InvestigatorsPage({
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="app-page-title">Investigators</h1>
+        <h1 className="app-page-title">People</h1>
         <p className="app-page-description">
-          PI profiles, normalized tags, and deterministic NIH opportunity matches.
+          People profiles, normalized tags, and deterministic NIH opportunity matches.
         </p>
       </header>
 
       <Card>
-        <CardHeader title="Import PIs" description="CSV columns: first_name, last_name, email, home_department, division, rank, affiliations, primary_research_area, …" />
-        <CardBody>
+        <CardHeader title="Import people" description="CSV columns: first_name, last_name, email, home_department, division, rank, affiliations, primary_research_area, …" />
+        <CardBody className="space-y-4">
           <InvestigatorCsvForm />
+          <InvestigatorSignalImportForm />
         </CardBody>
       </Card>
 
@@ -98,8 +101,8 @@ export default async function InvestigatorsPage({
         <p className="text-sm text-red-600">{error.message}</p>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title="No investigators"
-          description="Import a CSV to create investigator rows and normalized features."
+          title="No people"
+          description="Import a CSV or Signal list to create people rows and normalized features."
         />
       ) : (
         <Card>
@@ -114,6 +117,9 @@ export default async function InvestigatorsPage({
                     <th className="px-4 py-2 font-medium">Research community</th>
                     <th className="px-4 py-2 font-medium">RePORTER profile</th>
                     <th className="px-4 py-2 font-medium">Tags (sample)</th>
+                    <th className="px-4 py-2 font-medium">
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--fo-divider)]">
@@ -153,6 +159,9 @@ export default async function InvestigatorsPage({
                         </td>
                         <td className="px-4 py-2 text-xs text-[var(--fo-ink-body)]">
                           {sample.length ? sample.join(", ") : "—"}
+                        </td>
+                        <td className="px-4 py-2 align-top">
+                          <InvestigatorRowActions investigatorId={r.id} fullName={r.full_name} />
                         </td>
                       </tr>
                     );

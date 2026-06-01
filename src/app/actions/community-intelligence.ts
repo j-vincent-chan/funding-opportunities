@@ -8,8 +8,19 @@ import {
   refreshAllInvestigatorsCommunityCaches,
 } from "@/lib/community/bulk-refresh-investigator-caches";
 import { recomputeCoauthorshipFromPublications } from "@/lib/community/collaborations";
+import { refreshInvestigatorClinicalTrials } from "@/lib/community/clinicaltrials-ingest";
 import { refreshInvestigatorPubMed } from "@/lib/community/pubmed-ingest";
 import { refreshInvestigatorReporter } from "@/lib/community/reporter-ingest";
+import { ingestUcsfNewsFromSitemaps } from "@/lib/community/ucsf-news-ingest";
+import {
+  formatLinkUcsfNewsSummary,
+  linkUcsfNewsItemsToWatchlist,
+} from "@/lib/community/ucsf-news-investigator-linking";
+import {
+  formatSyncCommunitySignalsSummary,
+  syncAllCommunitySignalsFromCaches,
+  syncInvestigatorCommunitySignalsFromCaches,
+} from "@/lib/community/sync-community-signals-from-caches";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/admin-service";
 
@@ -76,8 +87,8 @@ export async function createStrategistEngagementFormAction(formData: FormData): 
   });
 
   if (error) throw new Error(error.message);
-  revalidatePath("/pi-community");
-  revalidatePath("/pi-community/engagements");
+  revalidatePath("/portfolio-intelligence");
+  revalidatePath("/portfolio-intelligence/engagements");
   revalidatePath(`/investigators/${parsed.data.investigatorId}`);
 }
 
@@ -128,49 +139,122 @@ export async function updateStrategistEngagementFormAction(formData: FormData): 
     .eq("id", parsed.data.engagementId);
 
   if (error) throw new Error(error.message);
-  revalidatePath("/pi-community");
-  revalidatePath("/pi-community/engagements");
-  revalidatePath(`/pi-community/engagements/${parsed.data.engagementId}`);
+  revalidatePath("/portfolio-intelligence");
+  revalidatePath("/portfolio-intelligence/engagements");
+  revalidatePath(`/portfolio-intelligence/engagements/${parsed.data.engagementId}`);
   if (existing?.investigator_id) {
     revalidatePath(`/investigators/${existing.investigator_id}`);
   }
 }
 
-export async function refreshInvestigatorPubMedFormAction(formData: FormData): Promise<void> {
+export type InvestigatorCacheRefreshResult = { ok: boolean; message: string };
+
+export async function refreshInvestigatorPubMedFormAction(
+  formData: FormData
+): Promise<InvestigatorCacheRefreshResult> {
   const id = z.string().uuid().safeParse(formData.get("investigatorId"));
-  if (!id.success) throw new Error("Invalid investigator");
+  if (!id.success) return { ok: false, message: "Invalid investigator" };
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) return { ok: false, message: "Unauthorized" };
   try {
-    await refreshInvestigatorPubMed(supabase, id.data);
-    await recomputeCoauthorshipFromPublications(supabase);
-    revalidatePath("/pi-community");
+    const result = await refreshInvestigatorPubMed(supabase, id.data);
+    const rejected =
+      result.rejectedPmids && result.rejectedPmids > 0
+        ? ` ${result.rejectedPmids} PMID(s) skipped (name/UCSF affiliation check).`
+        : "";
+    const warning = result.warning ? ` ${result.warning}` : "";
+    let message = `PubMed refresh complete: ${result.inserted} publication(s) saved (${result.pmids.length} matched).${rejected}${warning}`;
+
+    try {
+      const sync = await syncInvestigatorCommunitySignalsFromCaches(supabase, id.data);
+      message += ` Community signals synced (${sync.publicationsSynced} papers, ${sync.removedStale} stale removed).`;
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      message += ` Warning: community signal sync failed (${detail}). Apply migrations 20260528120000 and 20260528130000 if the community_source_items table is missing Prospera columns.`;
+    }
+
+    try {
+      const graph = await recomputeCoauthorshipFromPublications(supabase);
+      message += ` Co-authorship graph updated (${graph.coauthorshipEdges} edges).`;
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      message += ` Warning: co-authorship recompute failed (${detail}).`;
+    }
+
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
+    revalidatePath("/portfolio-intelligence");
     revalidatePath(`/investigators/${id.data}`);
+    return { ok: true, message };
   } catch (e) {
-    throw new Error(e instanceof Error ? e.message : String(e));
+    const detail = e instanceof Error ? e.message : String(e);
+    if (detail === "Bad Request") {
+      return {
+        ok: false,
+        message:
+          "PubMed refresh failed with “Bad Request” from the database. This usually means community_source_items migrations are not applied yet (run 20260528120000 and 20260528130000 in Supabase SQL). Also check pubmed_query_override on this investigator — it must be valid PubMed query syntax, not a URL.",
+      };
+    }
+    return { ok: false, message: detail };
   }
 }
 
-export async function refreshInvestigatorReporterFormAction(formData: FormData): Promise<void> {
+export async function refreshInvestigatorReporterFormAction(
+  formData: FormData
+): Promise<InvestigatorCacheRefreshResult> {
   const id = z.string().uuid().safeParse(formData.get("investigatorId"));
-  if (!id.success) throw new Error("Invalid investigator");
+  if (!id.success) return { ok: false, message: "Invalid investigator" };
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) return { ok: false, message: "Unauthorized" };
   try {
     const result = await refreshInvestigatorReporter(supabase, id.data);
-    revalidatePath("/pi-community");
+    await syncInvestigatorCommunitySignalsFromCaches(supabase, id.data);
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
+    revalidatePath("/portfolio-intelligence");
     revalidatePath(`/investigators/${id.data}`);
     if (result.skipped === "missing_nih_profile_id" && result.warning) {
-      throw new Error(result.warning);
+      return { ok: false, message: result.warning };
     }
+    return {
+      ok: true,
+      message: `NIH RePORTER refresh complete: ${result.inserted} project(s) cached.`,
+    };
   } catch (e) {
-    throw new Error(e instanceof Error ? e.message : String(e));
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function refreshInvestigatorClinicalTrialsFormAction(
+  formData: FormData
+): Promise<InvestigatorCacheRefreshResult> {
+  const id = z.string().uuid().safeParse(formData.get("investigatorId"));
+  if (!id.success) return { ok: false, message: "Invalid investigator" };
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Unauthorized" };
+  try {
+    const result = await refreshInvestigatorClinicalTrials(supabase, id.data);
+    await syncInvestigatorCommunitySignalsFromCaches(supabase, id.data);
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
+    revalidatePath("/portfolio-intelligence");
+    revalidatePath(`/investigators/${id.data}`);
+    const warning = result.warning ? ` ${result.warning}` : "";
+    return {
+      ok: true,
+      message: `ClinicalTrials.gov refresh complete: ${result.inserted} study/studies cached.${warning}`,
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -182,7 +266,8 @@ export async function recomputeCommunityCollaborationsFormAction(): Promise<void
   if (!user) throw new Error("Unauthorized");
   try {
     await recomputeCoauthorshipFromPublications(supabase);
-    revalidatePath("/pi-community");
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
   } catch (e) {
     throw new Error(e instanceof Error ? e.message : String(e));
   }
@@ -205,7 +290,8 @@ export async function refreshAllInvestigatorCachesAdminAction(): Promise<{
   const sr = createServiceRoleClient() ?? supabase;
   try {
     const result = await refreshAllInvestigatorsCommunityCaches(sr);
-    revalidatePath("/pi-community");
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
     revalidatePath("/investigators");
     return { ok: true, message: formatBulkRefreshSummary(result) };
   } catch (e) {
@@ -213,5 +299,114 @@ export async function refreshAllInvestigatorCachesAdminAction(): Promise<{
       ok: false,
       message: e instanceof Error ? e.message : String(e),
     };
+  }
+}
+
+/** Mirror local PubMed / RePORTER caches into community_source_items for dashboard charts. */
+export async function syncCommunitySignalsFromCachesAction(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Unauthorized" };
+
+  try {
+    const result = await syncAllCommunitySignalsFromCaches(supabase);
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
+    return { ok: true, message: formatSyncCommunitySignalsSummary(result) };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/** Admin-only: ingest UCSF News directly from UCSF sitemap URLs into community_source_items. */
+export async function ingestUcsfNewsFromSitemapsAction(params?: {
+  maxItems?: number;
+  sinceYear?: number | null;
+  linkToWatchlist?: boolean;
+  linkMaxItems?: number;
+}): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const supabase = createClient();
+  const admin = await requireAdmin(supabase);
+  if (!admin.ok) return { ok: false, message: admin.error };
+
+  const sr = createServiceRoleClient() ?? supabase;
+  try {
+    const result = await ingestUcsfNewsFromSitemaps(sr, {
+      maxItems: params?.maxItems,
+      sinceYear: params?.sinceYear ?? null,
+    });
+    const lines = [
+      `Sitemaps crawled: ${result.crawledSitemaps}`,
+      `UCSF News URLs discovered: ${result.discoveredNewsUrls}`,
+      `URLs selected: ${result.selectedNewsUrls}`,
+      `Rows upserted: ${result.upserted}`,
+      `Rows failed: ${result.failed}`,
+      result.errors.length > 0 ? `Sample error: ${result.errors[0]}` : null,
+    ];
+
+    if (params?.linkToWatchlist !== false && result.upserted > 0) {
+      const linkCap = Math.max(
+        1,
+        Math.min(result.upserted, params?.linkMaxItems ?? 500)
+      );
+      const linkResult = await linkUcsfNewsItemsToWatchlist(sr, {
+        maxItems: linkCap,
+        onlyUnlinked: true,
+        fetchArticleBodies: true,
+      });
+      lines.push("", "Watchlist linking:", formatLinkUcsfNewsSummary(linkResult));
+      if (result.upserted > linkCap) {
+        lines.push(
+          `Note: only the first ${linkCap} unlinked rows were matched this run. Use "Link to watchlist" for the rest.`
+        );
+      }
+    }
+
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
+    revalidatePath("/portfolio-intelligence");
+    return {
+      ok: true,
+      message: lines.filter(Boolean).join("\n"),
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Admin-only: match UCSF News rows against watchlist names and write entity links. */
+export async function linkUcsfNewsToWatchlistAction(params?: {
+  maxItems?: number;
+  onlyUnlinked?: boolean;
+  fetchArticleBodies?: boolean;
+}): Promise<{ ok: boolean; message: string }> {
+  const supabase = createClient();
+  const admin = await requireAdmin(supabase);
+  if (!admin.ok) return { ok: false, message: admin.error };
+
+  const sr = createServiceRoleClient() ?? supabase;
+  try {
+    const result = await linkUcsfNewsItemsToWatchlist(sr, {
+      maxItems: params?.maxItems ?? 2000,
+      onlyUnlinked: params?.onlyUnlinked ?? true,
+      fetchArticleBodies: params?.fetchArticleBodies ?? true,
+    });
+    revalidatePath("/portfolio-intelligence");
+revalidatePath("/portfolio-intelligence/data-sources");
+    revalidatePath("/portfolio-intelligence");
+    return { ok: true, message: formatLinkUcsfNewsSummary(result) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }

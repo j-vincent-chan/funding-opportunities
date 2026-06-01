@@ -18,6 +18,9 @@ export type SavedSearchLink = {
   name: string;
   href: string;
   emailNotificationsEnabled: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  newMatchesSinceViewed?: number;
 };
 
 export function FundingSearchBookmarksRail({
@@ -39,6 +42,43 @@ export function FundingSearchBookmarksRail({
     const record = urlSearchParamsToRecord(new URLSearchParams(sp.toString()));
     return fundingListStateForBookmark(searchParamsToFundingListState(record));
   }, [sp]);
+
+  function summarizeSavedSearch(href: string): {
+    query: string;
+    filters: string[];
+    department: string;
+  } {
+    const queryString = href.includes("?") ? href.split("?")[1] ?? "" : "";
+    const params = new URLSearchParams(queryString);
+    const q = (params.get("q") ?? "").trim();
+    const dept = params.getAll("dept");
+    const sub = params.getAll("sub");
+    const agency = params.getAll("agency");
+    const mechanisms = params.getAll("mechanism");
+    const filters: string[] = [];
+    if (dept.length > 0) filters.push(`${dept.length} departments`);
+    if (sub.length > 0) filters.push(`${sub.length} subcomponents`);
+    if (agency.length > 0) filters.push(`${agency.length} agencies`);
+    if (mechanisms.length > 0) filters.push(`${mechanisms.length} mechanisms`);
+    const rdSignals = [
+      "activity",
+      "trial",
+      "nih_ic",
+      "announcement",
+      "pathway",
+      "invtag",
+      "collab",
+      "humansubjects",
+    ]
+      .map((key) => params.getAll(key).length)
+      .reduce((acc, n) => acc + n, 0);
+    if (rdSignals > 0) filters.push(`${rdSignals} research filters`);
+    return {
+      query: q || "No keyword",
+      filters,
+      department: dept[0] ?? "Cross-department",
+    };
+  }
 
   if (!loggedIn) {
     return (
@@ -65,7 +105,7 @@ export function FundingSearchBookmarksRail({
           Saved searches
         </h3>
         <p className="mt-1 text-[0.75rem] leading-snug text-[var(--fo-ink-muted)]">
-          Store keyword, scope, sort, departments, and triage filters. Restoring opens page 1.
+          Store recurring opportunity surveillance with terms, filters, and digest preferences.
         </p>
         <div className="mt-3 flex flex-col gap-2">
           <input
@@ -115,7 +155,8 @@ export function FundingSearchBookmarksRail({
           </Button>
         </div>
         <p className="mt-3 text-[0.7rem] leading-relaxed text-[var(--fo-ink-muted)]">
-          Alerts consider notices updated in the last ~72 hours (deduplicated per notice).
+          Alerts consider notices updated in the last ~72 hours (deduplicated per notice). Slack digest support can be
+          added via webhook delivery.
         </p>
         {savedSearches.length === 0 ? (
           <p className="mt-2 text-[0.75rem] text-[var(--fo-ink-muted)]">No saved searches yet.</p>
@@ -126,31 +167,62 @@ export function FundingSearchBookmarksRail({
                 key={s.id}
                 className="rounded-md border border-[var(--fo-border)] bg-[var(--fo-paper-2)] px-2 py-2"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <Link
-                    href={s.href}
-                    className="min-w-0 flex-1 text-left text-[0.8125rem] font-semibold leading-snug text-[var(--fo-interaction)] underline-offset-2 hover:underline"
-                  >
-                    {s.name}
-                  </Link>
-                  <button
-                    type="button"
-                    className="shrink-0 text-[0.7rem] font-semibold text-[var(--fo-ink-muted)] hover:text-red-700"
-                    disabled={pendingDeleteId === s.id}
-                    title="Delete saved search"
-                    onClick={() => {
-                      setPendingDeleteId(s.id);
-                      void (async () => {
-                        const r = await deleteSavedFundingSearchAction(s.id);
-                        setPendingDeleteId(null);
-                        if (!r.ok) window.alert(r.error);
-                        else router.refresh();
-                      })();
-                    }}
-                  >
-                    {pendingDeleteId === s.id ? "…" : "Remove"}
-                  </button>
-                </div>
+                {(() => {
+                  const meta = summarizeSavedSearch(s.href);
+                  return (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <Link
+                          href={s.href}
+                          className="min-w-0 flex-1 text-left text-[0.8125rem] font-semibold leading-snug text-[var(--fo-interaction)] underline-offset-2 hover:underline"
+                        >
+                          {s.name}
+                        </Link>
+                        <button
+                          type="button"
+                          className="shrink-0 text-[0.7rem] font-semibold text-[var(--fo-ink-muted)] hover:text-red-700"
+                          disabled={pendingDeleteId === s.id}
+                          title="Delete saved search"
+                          onClick={() => {
+                            setPendingDeleteId(s.id);
+                            void (async () => {
+                              const r = await deleteSavedFundingSearchAction(s.id);
+                              setPendingDeleteId(null);
+                              if (!r.ok) window.alert(r.error);
+                              else router.refresh();
+                            })();
+                          }}
+                        >
+                          {pendingDeleteId === s.id ? "…" : "Remove"}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[0.7rem] text-[var(--fo-ink-body)]">
+                        <span className="font-semibold">Terms:</span> {meta.query}
+                      </p>
+                      <p className="mt-0.5 text-[0.68rem] text-[var(--fo-ink-muted)]">
+                        <span className="font-semibold">Filters:</span>{" "}
+                        {meta.filters.length > 0 ? meta.filters.join(" · ") : "No additional filters"}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1 text-[0.66rem] text-[var(--fo-ink-muted)]">
+                        <span className="rounded-full bg-[var(--fo-paper)] px-2 py-0.5 ring-1 ring-[var(--fo-border)]">
+                          Dept: {meta.department}
+                        </span>
+                        <span className="rounded-full bg-[var(--fo-paper)] px-2 py-0.5 ring-1 ring-[var(--fo-border)]">
+                          Cadence: {s.emailNotificationsEnabled ? "Weekly digest" : "Manual"}
+                        </span>
+                        <span className="rounded-full bg-[var(--fo-paper)] px-2 py-0.5 ring-1 ring-[var(--fo-border)]">
+                          Delivery: {s.emailNotificationsEnabled ? "Email" : "In-app"}
+                        </span>
+                        <span className="rounded-full bg-[var(--fo-paper)] px-2 py-0.5 ring-1 ring-[var(--fo-border)]">
+                          New matches: {s.newMatchesSinceViewed ?? 0}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[0.66rem] text-[var(--fo-ink-muted)]">
+                        Updated: {s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "—"}
+                      </p>
+                    </>
+                  );
+                })()}
                 <label className="mt-2 flex cursor-pointer items-start gap-2 text-[0.7rem] font-medium leading-snug text-[var(--fo-ink-muted)]">
                   <input
                     type="checkbox"
