@@ -101,7 +101,157 @@ export function pubmedAuthorVariants(
   return [`${last} ${firstLetter}[Author]`];
 }
 
-/** Names that need a middle initial for reliable PubMed disambiguation at UCSF. */
+const AMBIGUOUS_FIRST_NAMES = new Set([
+  "james",
+  "michael",
+  "david",
+  "john",
+  "robert",
+  "william",
+  "richard",
+  "thomas",
+  "mark",
+  "paul",
+  "daniel",
+  "andrew",
+  "christopher",
+  "matthew",
+  "joseph",
+  "kevin",
+  "brian",
+  "eric",
+  "steven",
+  "peter",
+  "peng",
+  "ping",
+  "alexander",
+  "benjamin",
+  "samuel",
+  "ryan",
+  "justin",
+  "joshua",
+  "george",
+  "charles",
+  "anthony",
+  "donald",
+  "kenneth",
+  "stephen",
+  "timothy",
+  "ronald",
+  "edward",
+  "jason",
+  "jeffrey",
+  "gregory",
+  "patrick",
+  "raymond",
+  "jack",
+  "dennis",
+]);
+
+const AMBIGUOUS_LAST_NAMES = new Set([
+  "lee",
+  "kim",
+  "chen",
+  "wang",
+  "li",
+  "zhang",
+  "liu",
+  "wu",
+  "lin",
+  "yang",
+  "huang",
+  "zhao",
+  "zhou",
+  "xu",
+  "sun",
+  "ma",
+  "he",
+  "wilson",
+  "anderson",
+  "brown",
+  "jones",
+  "johnson",
+  "smith",
+  "martin",
+  "garcia",
+  "nguyen",
+  "chan",
+  "wong",
+  "park",
+  "choi",
+  "kang",
+  "tan",
+  "ho",
+  "young",
+  "king",
+  "wright",
+  "hill",
+  "green",
+  "adams",
+  "baker",
+  "nelson",
+  "carter",
+  "mitchell",
+  "roberts",
+  "turner",
+  "phillips",
+  "campbell",
+  "parker",
+  "evans",
+  "edwards",
+  "collins",
+  "stewart",
+  "morris",
+  "rogers",
+  "reed",
+  "cook",
+  "morgan",
+  "bell",
+  "murphy",
+  "bailey",
+  "rivera",
+  "cooper",
+  "richardson",
+  "cox",
+  "howard",
+  "ward",
+  "torres",
+  "peterson",
+  "gray",
+  "ramirez",
+  "james",
+  "watson",
+  "brooks",
+  "kelly",
+  "sanders",
+  "price",
+  "bennett",
+  "wood",
+  "barnes",
+  "ross",
+  "henderson",
+  "coleman",
+  "jenkins",
+  "perry",
+  "powell",
+  "long",
+  "patterson",
+  "hughes",
+  "flores",
+  "washington",
+  "butler",
+  "simmons",
+  "foster",
+  "gonzalez",
+  "bryant",
+  "alexander",
+  "russell",
+  "griffin",
+  "diaz",
+  "hayes",
+]);
+
+/** Names that need a stored middle_initial for reliable PubMed disambiguation at UCSF. */
 export function pubmedNameRequiresMiddleInitial(firstName: string, lastName: string): boolean {
   const first = normalizePart(firstName).toLowerCase();
   const last = normalizePart(lastName).toLowerCase();
@@ -109,7 +259,27 @@ export function pubmedNameRequiresMiddleInitial(firstName: string, lastName: str
   if (last === "lee" && first === "james") return true;
   if (last === "wilson" && first === "michael") return true;
   if (last === "he" && (first === "peng" || first === "ping")) return true;
+  if (AMBIGUOUS_FIRST_NAMES.has(first) && AMBIGUOUS_LAST_NAMES.has(last)) return true;
   return false;
+}
+
+/** When set, PubMed author XML must show a middle initial that matches (not just last+first+UCSF). */
+export function strictMiddleRequiredOnAuthorRecord(
+  resolved: ReturnType<typeof resolvePubmedInvestigatorName>
+): boolean {
+  if (!resolved.middleInitial) return false;
+  if (!pubmedNameRequiresMiddleInitial(resolved.firstName, resolved.lastName)) return false;
+  // Very short last names (He, Li, Wu) often only publish a single Initials letter in PubMed.
+  if (normalizePart(resolved.lastName).length <= 2) return false;
+  return true;
+}
+
+export function middleInitialFromColumn(input: PubmedInvestigatorName): string | null {
+  const fromColumn = normalizePart(input.middleInitial ?? "")
+    .replace(/\./g, "")
+    .slice(0, 1)
+    .toUpperCase();
+  return fromColumn || null;
 }
 
 export function pubmedNameResolutionError(input: PubmedInvestigatorName): string | null {
@@ -117,8 +287,15 @@ export function pubmedNameResolutionError(input: PubmedInvestigatorName): string
   if (!resolved.lastName || !resolved.firstName) {
     return "Set first and last name (or full_name) before refreshing PubMed.";
   }
-  if (!resolved.middleInitial && pubmedNameRequiresMiddleInitial(resolved.firstName, resolved.lastName)) {
-    return `Ambiguous name "${resolved.firstName} ${resolved.lastName}" — set middle_initial (e.g. C for James C Lee) and refresh again. PubMed uses Last + First + Middle Initial + UCSF affiliation.`;
+  if (!pubmedNameRequiresMiddleInitial(resolved.firstName, resolved.lastName)) {
+    return null;
+  }
+  const fromColumn = middleInitialFromColumn(input);
+  if (!fromColumn) {
+    return `Ambiguous name "${resolved.firstName} ${resolved.lastName}" — set middle_initial on this investigator (e.g. C for James C Lee). PubMed uses Last + First + Middle Initial + UCSF affiliation; parsing from full_name alone is not allowed for this name.`;
+  }
+  if (!resolved.middleInitial) {
+    return `Ambiguous name "${resolved.firstName} ${resolved.lastName}" — middle_initial "${fromColumn}" could not be aligned with first/last name.`;
   }
   return null;
 }

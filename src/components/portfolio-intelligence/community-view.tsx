@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -23,11 +23,18 @@ import type {
   PortfolioSignalItem,
   SignalSource,
 } from "@/lib/portfolio-intelligence/mock-data";
-import { sourceChipLabels } from "@/lib/portfolio-intelligence/mock-data";
 import type { AnnotationDimensionTrend } from "@/lib/portfolio-intelligence/annotation-dimension-trends";
 import {
-  signalSourceChartColors,
-  signalSourceStackOrder,
+  buildDiseaseLandscapeDomains,
+  diseaseDomainPreview,
+  isDiseaseDomainId,
+  type DiseaseDomainId,
+} from "@/lib/portfolio-intelligence/disease-landscape-hierarchy";
+import {
+  isSignalsOverTimeSegmentVisible,
+  signalsOverTimeChartColors,
+  signalsOverTimeLabels,
+  signalsOverTimeStackOrder,
   groupTitleFromSource,
   sourceFromItem,
   type SignalsOverTimeRow,
@@ -428,8 +435,13 @@ function PortfolioIntelligenceSummaryCard({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {lists.map((list) => (
             <div key={list.title} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
-              <p className="text-sm font-semibold text-[var(--fo-title)]">{list.title}</p>
-              <div className="mt-2 space-y-1.5">
+              <p className="text-sm font-semibold text-[var(--fo-title)]">
+                {list.title}
+                {list.rows.length > 0 ? (
+                  <span className="ml-1.5 font-normal text-[var(--fo-ink-muted)]">({list.rows.length})</span>
+                ) : null}
+              </p>
+              <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto overscroll-contain pr-1">
                 {list.rows.length > 0 ? (
                   list.rows.map((row) => {
                     const selected =
@@ -463,8 +475,15 @@ function PortfolioIntelligenceSummaryCard({
             </div>
           ))}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
-            <p className="text-sm font-semibold text-[var(--fo-title)]">Top investigators with signals</p>
-            <div className="mt-2 space-y-1.5">
+            <p className="text-sm font-semibold text-[var(--fo-title)]">
+              Top investigators with signals
+              {summary.topInvestigators.length > 0 ? (
+                <span className="ml-1.5 font-normal text-[var(--fo-ink-muted)]">
+                  ({summary.topInvestigators.length})
+                </span>
+              ) : null}
+            </p>
+            <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto overscroll-contain pr-1">
               {summary.topInvestigators.length > 0 ? (
                 summary.topInvestigators.map((row) => (
                   <div key={row.id} className="flex items-center justify-between text-xs">
@@ -530,17 +549,17 @@ function PortfolioIntelligenceSummaryCard({
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  {signalSourceStackOrder
-                    .filter((source) => visibleSources.includes(source))
-                    .map((source) => (
+                  {signalsOverTimeStackOrder
+                    .filter((segment) => isSignalsOverTimeSegmentVisible(segment, visibleSources))
+                    .map((segment) => (
                       <Area
-                        key={source}
+                        key={segment}
                         type="monotone"
-                        dataKey={source}
-                        name={sourceChipLabels[source]}
+                        dataKey={segment}
+                        name={signalsOverTimeLabels[segment]}
                         stackId="signals"
-                        stroke={signalSourceChartColors[source]}
-                        fill={signalSourceChartColors[source]}
+                        stroke={signalsOverTimeChartColors[segment]}
+                        fill={signalsOverTimeChartColors[segment]}
                         fillOpacity={0.65}
                         strokeWidth={1.5}
                       />
@@ -589,19 +608,19 @@ function PortfolioIntelligenceSummaryCard({
         <div className="grid gap-4 xl:grid-cols-3">
           <AnnotationDimensionTrendCard
             title="Top themes over time"
-            description={`Monthly mention counts for leading themes in ${periodLabel.toLowerCase()}`}
+            description="Yearly mention counts for leading themes over the past 10 years"
             trend={summary.themesOverTime}
             emptyMessage="No theme annotation data yet."
           />
           <AnnotationDimensionTrendCard
             title="Top methods over time"
-            description={`Monthly mention counts for leading methods in ${periodLabel.toLowerCase()}`}
+            description="Yearly mention counts for leading methods over the past 10 years"
             trend={summary.methodsOverTime}
             emptyMessage="No methods annotation data yet."
           />
           <AnnotationDimensionTrendCard
             title="Top diseases over time"
-            description={`Monthly mention counts for leading diseases in ${periodLabel.toLowerCase()}`}
+            description="Yearly mention counts for leading diseases over the past 10 years"
             trend={summary.diseasesOverTime}
             emptyMessage="No disease annotation data yet."
           />
@@ -610,17 +629,154 @@ function PortfolioIntelligenceSummaryCard({
         <div className="grid gap-4 xl:grid-cols-2">
           <AnnotationDimensionTrendCard
             title="Top journals over time"
-            description={`Monthly publication counts by journal in ${periodLabel.toLowerCase()}`}
+            description="Yearly publication counts by journal over the past 10 years"
             trend={summary.journalsOverTime}
             emptyMessage="No PubMed signals in scope."
           />
           <AnnotationDimensionTrendCard
             title="Top funding agencies over time"
-            description={`Monthly grant counts by agency in ${periodLabel.toLowerCase()}`}
+            description="Yearly grant counts by agency over the past 10 years"
             trend={summary.fundingAgenciesOverTime}
             emptyMessage="No grant signals in scope."
           />
         </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+type DiseaseLandscapeView =
+  | { kind: "domains" }
+  | { kind: "conditions"; domainId: DiseaseDomainId };
+
+function DiseaseLandscapeMapCard({
+  diseases,
+}: {
+  diseases: PortfolioSummaryListEntry[];
+}) {
+  const domains = useMemo(() => buildDiseaseLandscapeDomains(diseases), [diseases]);
+  const [view, setView] = useState<DiseaseLandscapeView>({ kind: "domains" });
+
+  useEffect(() => {
+    setView({ kind: "domains" });
+  }, [diseases]);
+
+  const selectedDomain = useMemo(
+    () => (view.kind === "conditions" ? domains.find((domain) => domain.id === view.domainId) ?? null : null),
+    [domains, view]
+  );
+
+  const boxes = useMemo(() => {
+    if (view.kind === "conditions" && selectedDomain) {
+      const total = selectedDomain.count || 1;
+      return selectedDomain.children.map((child, index) => ({
+        id: child.id,
+        name: child.label,
+        subtitle: null as string | null,
+        count: child.count,
+        percentage: Math.max(1, Math.round((child.count / total) * 100)),
+        color:
+          selectedDomain.color ??
+          THEME_DISTRIBUTION_COLORS[index % THEME_DISTRIBUTION_COLORS.length] ??
+          "#8e9cb4",
+      }));
+    }
+    return domains.map((domain) => ({
+      id: domain.id,
+      name: domain.name,
+      subtitle: diseaseDomainPreview(domain.children),
+      count: domain.count,
+      percentage: domain.percentage,
+      color: domain.color,
+    }));
+  }, [domains, selectedDomain, view.kind]);
+
+  const totalMentions = useMemo(
+    () => diseases.reduce((acc, row) => acc + row.count, 0),
+    [diseases]
+  );
+
+  return (
+    <Card>
+      <CardHeader
+        title="Disease Landscape Map"
+        description="Hierarchical disease domains from AI annotations — click a domain to see constituent conditions"
+      />
+      <CardBody className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--fo-ink-muted)]">
+          <button
+            type="button"
+            onClick={() => setView({ kind: "domains" })}
+            className={`font-medium transition-colors ${
+              view.kind === "conditions" ? "text-[var(--fo-interaction)] hover:underline" : "text-[var(--fo-title)]"
+            }`}
+          >
+            All domains
+          </button>
+          {view.kind === "conditions" && selectedDomain ? (
+            <>
+              <span aria-hidden>/</span>
+              <span className="font-medium text-[var(--fo-title)]">{selectedDomain.name}</span>
+              <span>
+                · {selectedDomain.children.length} condition
+                {selectedDomain.children.length === 1 ? "" : "s"}
+              </span>
+            </>
+          ) : (
+            <span>
+              · {domains.length} domain{domains.length === 1 ? "" : "s"} ·{" "}
+              {totalMentions.toLocaleString()} mentions
+            </span>
+          )}
+        </div>
+
+        {boxes.length > 0 ? (
+          <div
+            className={`grid grid-cols-2 gap-2 lg:grid-cols-3 ${
+              view.kind === "conditions" ? "max-h-[28rem] overflow-y-auto overscroll-contain pr-1" : ""
+            }`}
+          >
+            {boxes.map((box) => {
+              const isDomain = view.kind === "domains";
+              return (
+                <button
+                  key={box.id}
+                  type="button"
+                  onClick={() => {
+                    if (isDomain && isDiseaseDomainId(box.id)) {
+                      setView({ kind: "conditions", domainId: box.id });
+                    }
+                  }}
+                  disabled={!isDomain}
+                  className={`rounded-xl border border-white/30 p-3 text-left text-white shadow-sm transition-transform ${
+                    isDomain ? "hover:scale-[1.02] hover:shadow-md" : "cursor-default"
+                  }`}
+                  style={{ background: box.color }}
+                  title={isDomain ? `Explore ${box.name}` : box.name}
+                >
+                  <p className="line-clamp-2 text-sm font-semibold">{box.name}</p>
+                  {box.subtitle ? (
+                    <p className="mt-1 line-clamp-2 text-xs opacity-90">{box.subtitle}</p>
+                  ) : null}
+                  <p className="mt-1 text-xs opacity-90">{box.percentage}% of view</p>
+                  <p className="text-xs opacity-90">{box.count.toLocaleString()} mentions</p>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--fo-ink-muted)]">No disease annotation data yet.</p>
+        )}
+
+        {view.kind === "conditions" ? (
+          <button
+            type="button"
+            onClick={() => setView({ kind: "domains" })}
+            className="text-xs font-medium text-[var(--fo-interaction)] hover:underline"
+          >
+            ← Back to all domains
+          </button>
+        ) : null}
       </CardBody>
     </Card>
   );
@@ -635,7 +791,7 @@ function ThemeLandscapeMapCard({
     <Card>
       <CardHeader
         title="Theme Landscape Map"
-        description="Same themes as Portfolio Intelligence Summary (from document AI annotations when available)"
+        description="Research themes inferred from signals when disease annotations are unavailable"
       />
       <CardBody>
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
@@ -852,7 +1008,11 @@ export function CommunityViewPage({
         visibleSources={visibleSources}
       />
       <div className="grid gap-4 2xl:grid-cols-3">
-        <ThemeLandscapeMapCard themes={themeDistribution} />
+        {portfolioSummary.topDiseases.length > 0 ? (
+          <DiseaseLandscapeMapCard diseases={portfolioSummary.topDiseases} />
+        ) : (
+          <ThemeLandscapeMapCard themes={themeDistribution} />
+        )}
         <EmergingThemesCard themes={emergingThemes} />
         <FundingPlaybookCard entries={fundingPlaybook} />
       </div>

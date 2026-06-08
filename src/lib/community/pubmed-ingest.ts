@@ -261,6 +261,8 @@ export async function refreshInvestigatorPubMed(
 
   const resolvedName = resolvePubmedInvestigatorName(investigatorInput);
 
+  await pruneInvalidInvestigatorPubmedCache(supabase, investigatorId, investigatorInput);
+
   const term = buildPubmedTerm({
     firstName: resolvedName.firstName,
     lastName: resolvedName.lastName,

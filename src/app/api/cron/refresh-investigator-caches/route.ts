@@ -9,7 +9,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin-service";
 export const maxDuration = 300;
 
 /**
- * Refresh PubMed + NIH RePORTER caches for all investigators, then recompute co-authorship edges.
+ * Refresh PubMed, NIH RePORTER, and ClinicalTrials.gov caches for all investigators, then recompute co-authorship edges.
  * Vercel Cron uses GET; manual runs may use POST.
  * Headers: Authorization: Bearer <CRON_SECRET>
  * Requires SUPABASE_SERVICE_ROLE_KEY.

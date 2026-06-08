@@ -88,4 +88,25 @@ describe("buildStrictPubmedTerm", () => {
       })
     ).toBeNull();
   });
+
+  it("requires middle_initial column for ambiguous names even when full_name has middle", () => {
+    expect(
+      pubmedNameResolutionError({
+        firstName: "James",
+        lastName: "Lee",
+        middleInitial: null,
+        fullName: "James C Lee",
+      })
+    ).toMatch(/middle_initial/i);
+  });
+
+  it("requires middle_initial column for Peng He", () => {
+    expect(
+      pubmedNameResolutionError({
+        firstName: "Peng",
+        lastName: "He",
+        fullName: "Peng He",
+      })
+    ).toMatch(/middle_initial/i);
+  });
 });

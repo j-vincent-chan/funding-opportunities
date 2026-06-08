@@ -21,35 +21,11 @@ type ChatTurn = {
   sources?: Source[];
 };
 
-const SUGGESTION_GROUPS: Array<{ label: string; prompts: string[] }> = [
-  {
-    label: "Find",
-    prompts: [
-      "Show new NIH opportunities posted this week",
-      "Find immunology opportunities closing in the next 90 days",
-    ],
-  },
-  {
-    label: "Compare",
-    prompts: [
-      "Compare R01 vs U01 opportunities for translational immunology",
-      "Which opportunities are best for early-stage investigators?",
-    ],
-  },
-  {
-    label: "Prioritize",
-    prompts: [
-      "Which opportunities are most worth sharing in the ImmunoX newsletter?",
-      "Which opportunities should OCR flag for grantwriting support?",
-    ],
-  },
-  {
-    label: "Plan",
-    prompts: [
-      "Create a funding calendar for cooperative agreements over $1M",
-      "What major opportunities are closing in the next 3 months?",
-    ],
-  },
+const EXAMPLE_PROMPTS = [
+  "Show new NIH opportunities posted this week",
+  "Find immunology opportunities closing in the next 90 days",
+  "Which opportunities are best for early-stage investigators?",
+  "What major opportunities are closing in the next 3 months?",
 ];
 
 export function FundingChatPanel() {
@@ -205,32 +181,9 @@ export function FundingChatPanel() {
             ) : null}
           </div>
         ) : (
-          <div className="mb-4">
-            <p className="text-sm font-medium text-[var(--fo-ink-body)]">
-              Use Ask Prospera for summaries, comparisons, prioritization, and planning across your synced notices.
-            </p>
-            <div className="mt-3 space-y-3">
-              {SUGGESTION_GROUPS.map((group) => (
-                <div key={group.label}>
-                  <p className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.12em] text-[var(--fo-ink-muted)]">
-                    {group.label}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {group.prompts.map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() => void send(prompt)}
-                        className="rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-xs font-medium text-[var(--fo-ink-body)] transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)]"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <p className="mb-4 text-sm font-medium text-[var(--fo-ink-body)]">
+            Summaries, comparisons, prioritization, and planning across your synced notices.
+          </p>
         )}
 
         {error ? (
@@ -259,6 +212,22 @@ export function FundingChatPanel() {
         <p className="mt-2 text-[0.7rem] text-[var(--fo-ink-faint)]">
           AI can make mistakes. Verify deadlines and amounts on the official notice.
         </p>
+
+        {!hasConversation ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {EXAMPLE_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => void send(prompt)}
+                disabled={loading}
+                className="rounded-full border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-1.5 text-xs font-medium text-[var(--fo-ink-body)] transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)] disabled:opacity-50"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -170,9 +170,17 @@ export default async function InvestigatorDetailPage({
         NIH RePORTER only queries by <code className="rounded bg-slate-100 px-1">nih_profile_id</code>{" "}
         (numeric PI profile id from RePORTER/eRA). Without it, refresh clears any cached projects and
         does not call the API — name search is disabled to avoid unrelated PIs with the same name.
-        ClinicalTrials.gov uses the public API v2 with{" "}
-        <code className="rounded bg-slate-100 px-1">clinicaltrials_query_override</code> when set;
-        otherwise LeadInvestigator + UCSF facility search (medium confidence; verify matches).
+        ClinicalTrials.gov uses the public{" "}
+        <a
+          href="https://clinicaltrials.gov/data-api/about-api"
+          className="text-[var(--fo-interaction)] underline"
+          target="_blank"
+          rel="noreferrer"
+        >
+          API v2
+        </a>{" "}
+        with <code className="rounded bg-slate-100 px-1">clinicaltrials_query_override</code> when set;
+        otherwise quoted name search scoped to UCSF facility (medium confidence; verify matches).
       </p>
 
       <Card>

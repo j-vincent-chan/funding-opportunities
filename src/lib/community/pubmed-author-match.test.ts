@@ -160,6 +160,7 @@ describe("investigatorListedWithUcsfAffiliation", () => {
       investigatorListedWithUcsfAffiliation(xml, {
         firstName: "Peng",
         lastName: "He",
+        middleInitial: "P",
         fullName: "Peng He",
       })
     ).toBe(false);
@@ -181,6 +182,7 @@ describe("investigatorListedWithUcsfAffiliation", () => {
       investigatorListedWithUcsfAffiliation(xml, {
         firstName: "Peng",
         lastName: "He",
+        middleInitial: "P",
         fullName: "Peng He",
       })
     ).toBe(true);
@@ -228,6 +230,71 @@ describe("investigatorListedWithUcsfAffiliation", () => {
         fullName: "James C Lee",
       })
     ).toBe(false);
+  });
+
+  it("rejects James C Lee paper for investigator James Lee without middle", () => {
+    const xml = `
+<PubmedArticle>
+  <Author>
+    <LastName>Lee</LastName>
+    <ForeName>James C</ForeName>
+    <Initials>JC</Initials>
+    <AffiliationInfo>
+      <Affiliation>Department of Radiation Oncology, University of California, San Francisco, San Francisco, CA, USA.</Affiliation>
+    </AffiliationInfo>
+  </Author>
+</PubmedArticle>`;
+    expect(
+      investigatorListedWithUcsfAffiliation(xml, {
+        firstName: "James",
+        lastName: "Lee",
+        fullName: "James Lee",
+      })
+    ).toBe(false);
+  });
+
+  it("rejects generic Michael Wilson at UCSF for Michael R Wilson with middle_initial R", () => {
+    const xml = `
+<PubmedArticle>
+  <Author>
+    <LastName>Wilson</LastName>
+    <ForeName>Michael</ForeName>
+    <Initials>M</Initials>
+    <AffiliationInfo>
+      <Affiliation>University of California, San Francisco, San Francisco, CA, USA.</Affiliation>
+    </AffiliationInfo>
+  </Author>
+</PubmedArticle>`;
+    expect(
+      investigatorListedWithUcsfAffiliation(xml, {
+        firstName: "Michael",
+        lastName: "Wilson",
+        middleInitial: "R",
+        fullName: "Michael R Wilson",
+      })
+    ).toBe(false);
+  });
+
+  it("accepts Michael R Wilson when author lists middle R on the entry", () => {
+    const xml = `
+<PubmedArticle>
+  <Author>
+    <LastName>Wilson</LastName>
+    <ForeName>Michael R</ForeName>
+    <Initials>MR</Initials>
+    <AffiliationInfo>
+      <Affiliation>Weill Institute for Neurosciences, University of California, San Francisco, San Francisco, CA, USA.</Affiliation>
+    </AffiliationInfo>
+  </Author>
+</PubmedArticle>`;
+    expect(
+      investigatorListedWithUcsfAffiliation(xml, {
+        firstName: "Michael",
+        lastName: "Wilson",
+        middleInitial: "R",
+        fullName: "Michael R Wilson",
+      })
+    ).toBe(true);
   });
 
   it("accepts James C Lee at UCSF Radiation Oncology", () => {

@@ -2,44 +2,15 @@
  * ClinicalTrials.gov ingestion via the public REST API v2.
  * Docs: https://clinicaltrials.gov/data-api/about-api
  *
- * Name-based investigator search is ambiguous; prefer clinicaltrials_query_override when possible.
+ * API v2 does not support AREA[LeadInvestigator]; use quoted full-text name search
+ * plus optional AREA[LocationFacility] in filter.advanced.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AsyncRateLimiter } from "@/lib/utils/async-rate-limiter";
-
-const API_BASE = "https://clinicaltrials.gov/api/v2";
-const PAGE_SIZE = 100;
-/** ~2 requests/second per NLM guidance. */
-const MIN_INTERVAL_MS = Number(process.env.CLINICALTRIALS_MIN_INTERVAL_MS ?? 550);
-
-const clinicalTrialsRateLimiter = new AsyncRateLimiter(MIN_INTERVAL_MS);
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || (status >= 500 && status < 600);
-}
-
-async function fetchClinicalTrialsApi(url: string, opts?: { maxAttempts?: number }): Promise<Response> {
-  const maxAttempts = Math.max(1, opts?.maxAttempts ?? 5);
-  let lastRes: Response | null = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await clinicalTrialsRateLimiter.schedule(() =>
-      fetch(url, {
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      })
-    );
-    lastRes = res;
-    if (!isRetryableStatus(res.status)) return res;
-    if (attempt >= maxAttempts) return res;
-    await sleep(Math.min(60_000, 1500 * 2 ** (attempt - 1)));
-  }
-  return lastRes ?? new Response(null, { status: 503 });
-}
+import {
+  searchClinicalTrialsStudiesPaginated,
+  type ClinicalTrialsStudyRecord,
+} from "@/lib/community/clinicaltrials-api-client";
 
 export function resolveClinicalTrialsMaxResults(optsMax?: number): number {
   const env = process.env.CLINICALTRIALS_MAX_RESULTS?.trim();
@@ -51,47 +22,40 @@ export function resolveClinicalTrialsMaxResults(optsMax?: number): number {
   return cap;
 }
 
-/** Build API v2 `query.term` using search-area syntax. */
+export type ClinicalTrialsSearchQuery = {
+  queryTerm: string;
+  filterAdvanced?: string;
+};
+
+/** Build API v2 search using supported query.term + filter.advanced parameters. */
+export function buildClinicalTrialsSearch(args: {
+  fullName: string;
+  clinicaltrialsQueryOverride: string | null;
+  affiliation?: string | null;
+}): ClinicalTrialsSearchQuery {
+  if (args.clinicaltrialsQueryOverride?.trim()) {
+    return { queryTerm: args.clinicaltrialsQueryOverride.trim() };
+  }
+  const name = args.fullName.trim();
+  if (!name) return { queryTerm: "" };
+  const escaped = name.replace(/"/g, "");
+  const queryTerm = `"${escaped}"`;
+  const aff = args.affiliation?.trim();
+  const filterAdvanced = aff ? `AREA[LocationFacility]${aff}` : undefined;
+  return { queryTerm, filterAdvanced };
+}
+
+/** @deprecated Use buildClinicalTrialsSearch — returns query.term only for display. */
 export function buildClinicalTrialsQuery(args: {
   fullName: string;
   clinicaltrialsQueryOverride: string | null;
   affiliation?: string | null;
 }): string {
-  if (args.clinicaltrialsQueryOverride?.trim()) return args.clinicaltrialsQueryOverride.trim();
-  const name = args.fullName.trim();
-  if (!name) return "";
-  const escaped = name.replace(/"/g, "");
-  const parts = [`AREA[LeadInvestigator]"${escaped}"`];
-  const aff = args.affiliation?.trim();
-  if (aff) parts.push(`AREA[LocationFacility]${aff}`);
-  return parts.join(" AND ");
+  const { queryTerm, filterAdvanced } = buildClinicalTrialsSearch(args);
+  if (!queryTerm) return "";
+  if (filterAdvanced) return `${queryTerm} AND ${filterAdvanced}`;
+  return queryTerm;
 }
-
-type DateStruct = { date?: string | null };
-
-type StudyProtocol = {
-  identificationModule?: {
-    nctId?: string | null;
-    briefTitle?: string | null;
-    officialTitle?: string | null;
-  };
-  statusModule?: {
-    overallStatus?: string | null;
-    startDateStruct?: DateStruct | null;
-    lastUpdatePostDateStruct?: DateStruct | null;
-  };
-  conditionsModule?: { conditions?: string[] | null };
-  sponsorCollaboratorsModule?: { leadSponsor?: { name?: string | null } | null };
-  descriptionModule?: { briefSummary?: string | null };
-};
-
-type StudyRecord = { protocolSection?: StudyProtocol | null };
-
-type StudiesPage = {
-  studies?: StudyRecord[] | null;
-  nextPageToken?: string | null;
-  totalCount?: number | null;
-};
 
 function parseIsoDate(value: string | null | undefined): string | null {
   if (!value?.trim()) return null;
@@ -102,7 +66,7 @@ function parseIsoDate(value: string | null | undefined): string | null {
   return parsed.toISOString().slice(0, 10);
 }
 
-export function parseClinicalTrialStudy(study: StudyRecord): {
+export function parseClinicalTrialStudy(study: ClinicalTrialsStudyRecord): {
   nctId: string;
   title: string;
   overallStatus: string | null;
@@ -137,47 +101,51 @@ export function parseClinicalTrialStudy(study: StudyRecord): {
   };
 }
 
+function normalizePersonName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Prefer studies where the investigator appears as an overall official when that data is present. */
+export function studyMatchesInvestigatorName(
+  study: ClinicalTrialsStudyRecord,
+  investigatorName: string
+): boolean {
+  const target = normalizePersonName(investigatorName);
+  if (!target) return true;
+  const officials = study.protocolSection?.contactsLocationsModule?.overallOfficials ?? [];
+  if (!officials.length) return true;
+  return officials.some((official) => {
+    const name = official?.name?.trim();
+    if (!name) return false;
+    const normalized = normalizePersonName(name);
+    return normalized === target || normalized.includes(target) || target.includes(normalized);
+  });
+}
+
 export async function searchClinicalTrialsStudies(
-  queryTerm: string,
-  maxResults: number
-): Promise<{ studies: StudyRecord[]; totalCount: number | null }> {
-  const studies: StudyRecord[] = [];
-  let pageToken: string | undefined;
-  let totalCount: number | null = null;
+  search: ClinicalTrialsSearchQuery,
+  maxResults: number,
+  opts?: { investigatorName?: string }
+): Promise<{ studies: ClinicalTrialsStudyRecord[]; totalCount: number | null }> {
+  const { studies, totalCount } = await searchClinicalTrialsStudiesPaginated(
+    {
+      queryTerm: search.queryTerm,
+      filterAdvanced: search.filterAdvanced,
+    },
+    maxResults
+  );
 
-  while (studies.length < maxResults) {
-    const params = new URLSearchParams();
-    params.set("query.term", queryTerm);
-    params.set("pageSize", String(Math.min(PAGE_SIZE, maxResults - studies.length)));
-    params.set("format", "json");
-    if (pageToken) params.set("pageToken", pageToken);
+  const name = opts?.investigatorName?.trim();
+  if (!name) return { studies, totalCount };
 
-    const url = `${API_BASE}/studies?${params.toString()}`;
-    const res = await fetchClinicalTrialsApi(url);
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(
-        `ClinicalTrials.gov API ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
-      );
-    }
-
-    const page = (await res.json()) as StudiesPage;
-    if (totalCount == null && typeof page.totalCount === "number") {
-      totalCount = page.totalCount;
-    }
-
-    const batch = page.studies ?? [];
-    studies.push(...batch);
-    pageToken = page.nextPageToken?.trim() || undefined;
-    if (!pageToken || batch.length === 0) break;
-  }
-
-  return { studies: studies.slice(0, maxResults), totalCount };
+  const filtered = studies.filter((study) => studyMatchesInvestigatorName(study, name));
+  return { studies: filtered, totalCount };
 }
 
 export type ClinicalTrialsIngestResult = {
   inserted: number;
   queryTerm: string;
+  filterAdvanced?: string;
   nctIds: string[];
   totalCount: number | null;
   warning?: string;
@@ -203,22 +171,25 @@ export async function refreshInvestigatorClinicalTrials(
     throw new Error(invErr?.message ?? "Investigator not found");
   }
 
-  const queryTerm = buildClinicalTrialsQuery({
+  const search = buildClinicalTrialsSearch({
     fullName: inv.full_name ?? "",
     clinicaltrialsQueryOverride: inv.clinicaltrials_query_override ?? null,
     affiliation: inv.home_department ?? inv.division ?? "UCSF",
   });
-  if (!queryTerm) {
+  if (!search.queryTerm) {
     throw new Error(
       "No ClinicalTrials.gov query — set full name or clinicaltrials_query_override on the investigator."
     );
   }
 
-  const { studies, totalCount } = await searchClinicalTrialsStudies(queryTerm, max);
+  const { studies, totalCount } = await searchClinicalTrialsStudies(search, max, {
+    investigatorName: inv.full_name ?? "",
+  });
   if (studies.length === 0) {
     return {
       inserted: 0,
-      queryTerm,
+      queryTerm: search.queryTerm,
+      filterAdvanced: search.filterAdvanced,
       nctIds: [],
       totalCount,
       warning: "No studies returned for this query.",
@@ -232,6 +203,10 @@ export async function refreshInvestigatorClinicalTrials(
     const parsed = parseClinicalTrialStudy(study);
     if (!parsed) continue;
     nctIds.push(parsed.nctId);
+
+    const provenance = search.filterAdvanced
+      ? `query.term: ${search.queryTerm}; filter.advanced: ${search.filterAdvanced}`
+      : `query.term: ${search.queryTerm}`;
 
     const { error } = await supabase.from("investigator_clinical_trials").upsert(
       {
@@ -247,14 +222,20 @@ export async function refreshInvestigatorClinicalTrials(
         source: "clinicaltrials_api_v2",
         raw_json: study as unknown as Record<string, unknown>,
         match_confidence: "medium",
-        provenance_note: `query.term: ${queryTerm}`,
+        provenance_note: provenance,
       },
       { onConflict: "investigator_id,nct_id" }
     );
     if (!error) inserted += 1;
   }
 
-  return { inserted, queryTerm, nctIds, totalCount };
+  return {
+    inserted,
+    queryTerm: search.queryTerm,
+    filterAdvanced: search.filterAdvanced,
+    nctIds,
+    totalCount,
+  };
 }
 
 export function clinicalTrialsStudyUrl(nctId: string): string {

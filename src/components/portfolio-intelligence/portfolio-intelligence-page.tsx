@@ -55,7 +55,9 @@ import {
 } from "@/components/portfolio-intelligence/community-view";
 import {
   buildAnnotationDimensionTrend,
+  buildPastYearKeys,
   buildSignalLabelTrend,
+  yearLabelFromKey,
 } from "@/lib/portfolio-intelligence/annotation-dimension-trends";
 import {
   buildAnnotationDimensionSignalMap,
@@ -63,11 +65,11 @@ import {
   type PortfolioSummaryListSignals,
 } from "@/lib/portfolio-intelligence/summary-list-signals";
 import { resolveSignalSourceUrl } from "@/lib/portfolio-intelligence/resolve-signal-source-url";
-import { isNihNewGrantByProjectNum } from "@/lib/community/signal-nih-funding";
 import {
-  emptySignalSourceCounts,
+  emptySignalsOverTimeCounts,
+  grantTimelineSegmentFromItem,
   groupTitleFromSource,
-  signalSourceStackOrder,
+  signalsOverTimeStackOrder,
   sourceFromItem,
 } from "@/lib/portfolio-intelligence/signal-source";
 
@@ -193,15 +195,8 @@ function dateText(iso: string | null): string {
 }
 
 function isContinuingGrantSignal(item: PortfolioSignalItem): boolean {
-  const projectNum = (item.nih_project_num ?? "").trim();
-  if (projectNum) return !isNihNewGrantByProjectNum(projectNum);
-  const text = `${item.title} ${item.summaryText ?? ""}`.toLowerCase();
-  return (
-    text.includes("continuing (non-compet") ||
-    text.includes("continuing non-compet") ||
-    text.includes("non-competing") ||
-    text.includes("continuation")
-  );
+  if (sourceFromItem(item) !== "grants") return false;
+  return grantTimelineSegmentFromItem(item) === "continuing_grants";
 }
 
 function fundingLabelFromSignal(item: PortfolioSignalItem): string {
@@ -233,7 +228,7 @@ function portfolioItemToAnalyticsRow(item: PortfolioSignalItem): CommunitySource
 function countTopSignalLabels(
   items: PortfolioSignalItem[],
   labelForItem: (item: PortfolioSignalItem) => string | null,
-  limit = 8
+  limit?: number
 ) {
   const counts = new Map<string, number>();
   for (const item of items) {
@@ -241,10 +236,9 @@ function countTopSignalLabels(
     if (!label) continue;
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([label, count]) => ({ label, count }));
+  const ranked = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  const sliced = limit === undefined ? ranked : ranked.slice(0, limit);
+  return sliced.map(([label, count]) => ({ label, count }));
 }
 
 function PeriodRangeToggle({
@@ -2234,17 +2228,16 @@ export function PortfolioIntelligencePage({
     }
     const scopedAnnotations = Array.from(annotationByItem.values());
 
-    const countTop = (values: string[], limit = 8) => {
+    const countTop = (values: string[], limit?: number) => {
       const counts = new Map<string, number>();
       for (const value of values) {
         const key = value.trim();
         if (!key) continue;
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
-      return Array.from(counts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, limit)
-        .map(([label, count]) => ({ label, count }));
+      const ranked = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+      const sliced = limit === undefined ? ranked : ranked.slice(0, limit);
+      return sliced.map(([label, count]) => ({ label, count }));
     };
 
     const investigatorsBySignals = new Map<string, number>();
@@ -2258,7 +2251,6 @@ export function PortfolioIntelligencePage({
     }
     const topInvestigators = Array.from(investigatorsBySignals.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
       .map(([id, signalCount]) => ({
         id,
         name: investigatorsById.get(id)?.name ?? "Unknown investigator",
@@ -2277,11 +2269,15 @@ export function PortfolioIntelligencePage({
       8
     ).map((row) => ({ label: row.label, count: row.count }));
 
-    const monthlyBySource = new Map<string, ReturnType<typeof emptySignalSourceCounts>>();
+    const monthlyBySource = new Map<string, ReturnType<typeof emptySignalsOverTimeCounts>>();
     for (const item of scopedItemsAllTime) {
       const source = sourceFromItem(item);
-      const bucket = monthlyBySource.get(item.monthKey) ?? emptySignalSourceCounts();
-      bucket[source] += 1;
+      const bucket = monthlyBySource.get(item.monthKey) ?? emptySignalsOverTimeCounts();
+      if (source === "grants") {
+        bucket[grantTimelineSegmentFromItem(item)] += 1;
+      } else {
+        bucket[source] += 1;
+      }
       monthlyBySource.set(item.monthKey, bucket);
     }
     const sortedKeys = Array.from(monthlyBySource.keys()).sort((a, b) => a.localeCompare(b));
@@ -2292,8 +2288,8 @@ export function PortfolioIntelligencePage({
       sortedKeys
     );
     const signalsOverTimeSeries = signalTrendKeys.map((monthKey) => {
-      const bucket = monthlyBySource.get(monthKey) ?? emptySignalSourceCounts();
-      const total = signalSourceStackOrder.reduce((sum, source) => sum + bucket[source], 0);
+      const bucket = monthlyBySource.get(monthKey) ?? emptySignalsOverTimeCounts();
+      const total = signalsOverTimeStackOrder.reduce((sum, segment) => sum + bucket[segment], 0);
       return {
         monthKey,
         monthLabel: monthLabelFromKey(monthKey),
@@ -2303,11 +2299,12 @@ export function PortfolioIntelligencePage({
     });
 
     const itemMonthKeyById = new Map(communityScopedItems.map((item) => [item.id, item.monthKey] as const));
+    const yearTrendKeys = buildPastYearKeys(latestSignalMonthKey);
     const annotationTrendBase = {
       annotations: scopedAnnotations,
       itemMonthKeyById,
-      monthKeys: signalTrendKeys,
-      monthLabelFromKey,
+      periodKeys: yearTrendKeys,
+      periodLabelFromKey: yearLabelFromKey,
       topLimit: 5,
     };
     const themesOverTime = buildAnnotationDimensionTrend({
@@ -2325,15 +2322,15 @@ export function PortfolioIntelligencePage({
 
     const journalsOverTime = buildSignalLabelTrend({
       items: communityScopedItems.filter((item) => item.source_type === "pubmed"),
-      monthKeys: signalTrendKeys,
-      monthLabelFromKey,
+      periodKeys: yearTrendKeys,
+      periodLabelFromKey: yearLabelFromKey,
       labelForItem: (item) => pubmedJournalLabel(portfolioItemToAnalyticsRow(item)),
       topLimit: 5,
     });
     const fundingAgenciesOverTime = buildSignalLabelTrend({
       items: communityScopedItems,
-      monthKeys: signalTrendKeys,
-      monthLabelFromKey,
+      periodKeys: yearTrendKeys,
+      periodLabelFromKey: yearLabelFromKey,
       labelForItem: (item) => grantAgencyLabel(portfolioItemToAnalyticsRow(item)),
       topLimit: 5,
     });
@@ -2359,13 +2356,12 @@ export function PortfolioIntelligencePage({
         (i) => sourceFromItem(i) === "grants" && !isContinuingGrantSignal(i)
       ).length,
       totalAnnotatedSignals: scopedAnnotations.length,
-      topThemes: countTop(scopedAnnotations.flatMap((a) => a.themes), 8),
-      topMethods: countTop(scopedAnnotations.flatMap((a) => a.methods), 8),
-      topDiseases: countTop(scopedAnnotations.flatMap((a) => a.diseases), 8),
+      topThemes: countTop(scopedAnnotations.flatMap((a) => a.themes)),
+      topMethods: countTop(scopedAnnotations.flatMap((a) => a.methods)),
+      topDiseases: countTop(scopedAnnotations.flatMap((a) => a.diseases)),
       topJournals: countTopSignalLabels(
         communityScopedItems.filter((i) => i.source_type === "pubmed"),
-        (item) => pubmedJournalLabel(portfolioItemToAnalyticsRow(item)),
-        8
+        (item) => pubmedJournalLabel(portfolioItemToAnalyticsRow(item))
       ),
       topFundingAgencies: countTopSignalLabels(communityScopedItems, (item) =>
         grantAgencyLabel(portfolioItemToAnalyticsRow(item))

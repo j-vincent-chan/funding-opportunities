@@ -3,7 +3,11 @@
  * on that same author entry (esearch Author+Affiliation can match across co-authors).
  */
 
-import { resolvePubmedInvestigatorName, type PubmedInvestigatorName } from "@/lib/community/pubmed-query";
+import {
+  resolvePubmedInvestigatorName,
+  strictMiddleRequiredOnAuthorRecord,
+  type PubmedInvestigatorName,
+} from "@/lib/community/pubmed-query";
 
 export type PubmedParsedAuthor = {
   lastName: string;
@@ -122,6 +126,8 @@ function firstNameMatches(
 function middleInitialMatches(author: PubmedParsedAuthor, requiredMiddle: string): boolean {
   const required = requiredMiddle.replace(/\./g, "").trim()[0]?.toUpperCase();
   if (!required) return true;
+  // PubMed often lists only a single Initials letter (first name); do not reject when no middle on record.
+  if (!authorHasMiddleOnRecord(author)) return true;
 
   const initials = normalizedAuthorInitials(author);
   const foreParts = author.foreName.split(/\s+/).filter(Boolean);
@@ -147,15 +153,32 @@ function normalizedAuthorInitials(author: PubmedParsedAuthor): string {
   return author.initials.replace(/[^A-Za-z]/g, "").toUpperCase();
 }
 
+/** PubMed author entry includes a middle initial (ForeName part or multi-letter Initials). */
+export function authorHasMiddleOnRecord(author: PubmedParsedAuthor): boolean {
+  const foreParts = author.foreName.split(/\s+/).filter(Boolean);
+  if (foreParts.length >= 2) {
+    const middleToken = foreParts[1]?.replace(/\./g, "").trim() ?? "";
+    if (middleToken.length === 1) return true;
+  }
+  const initials = normalizedAuthorInitials(author);
+  if (initials.length >= 2) return true;
+  return false;
+}
+
 export function authorEntryMatchesInvestigator(
   author: PubmedParsedAuthor,
   investigator: ResolvedPubmedName
 ): boolean {
   if (!lastNameMatches(author.lastName, investigator.lastName)) return false;
   if (!firstNameMatches(author, investigator.firstName, investigator.middleInitial)) return false;
-  if (investigator.middleInitial && !middleInitialMatches(author, investigator.middleInitial)) {
-    return false;
+
+  const authorMiddle = authorHasMiddleOnRecord(author);
+  if (authorMiddle && !investigator.middleInitial) return false;
+  if (!investigator.middleInitial) {
+    return author.affiliations.some(isUcsfAffiliation);
   }
+  if (strictMiddleRequiredOnAuthorRecord(investigator) && !authorMiddle) return false;
+  if (!middleInitialMatches(author, investigator.middleInitial)) return false;
   return author.affiliations.some(isUcsfAffiliation);
 }
 

@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recomputeCoauthorshipFromPublications } from "@/lib/community/collaborations";
 import { refreshInvestigatorClinicalTrials } from "@/lib/community/clinicaltrials-ingest";
-import { refreshInvestigatorPubMed } from "@/lib/community/pubmed-ingest";
+import { refreshInvestigatorPubMed, pruneInvalidInvestigatorPubmedCache } from "@/lib/community/pubmed-ingest";
+import { resolvePubmedInvestigatorName } from "@/lib/community/pubmed-query";
 import { refreshInvestigatorReporter } from "@/lib/community/reporter-ingest";
 import { syncInvestigatorCommunitySignalsFromCaches } from "@/lib/community/sync-community-signals-from-caches";
 import { runWorkerPool } from "@/lib/utils/async-rate-limiter";
@@ -68,11 +69,43 @@ async function fetchAllInvestigatorIds(supabase: SupabaseClient): Promise<string
 
 type MutableBulkResult = BulkRefreshInvestigatorCachesResult;
 
+async function fetchInvestigatorPubmedName(
+  supabase: SupabaseClient,
+  id: string
+): Promise<{
+  firstName: string;
+  lastName: string;
+  middleInitial: string | null;
+  fullName: string;
+} | null> {
+  const { data, error } = await supabase
+    .from("investigators")
+    .select("first_name,last_name,middle_initial,full_name")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    firstName: String(data.first_name ?? "").trim(),
+    lastName: String(data.last_name ?? "").trim(),
+    middleInitial: data.middle_initial ? String(data.middle_initial).trim() : null,
+    fullName: data.full_name ?? "",
+  };
+}
+
 async function refreshOneInvestigatorCaches(
   supabase: SupabaseClient,
   id: string,
   result: MutableBulkResult
 ): Promise<void> {
+  const invName = await fetchInvestigatorPubmedName(supabase, id);
+  if (invName) {
+    try {
+      await pruneInvalidInvestigatorPubmedCache(supabase, id, resolvePubmedInvestigatorName(invName));
+    } catch {
+      // Best-effort cleanup before refresh.
+    }
+  }
+
   const [pubmedSettled, reporterSettled, trialsSettled] = await Promise.allSettled([
     refreshInvestigatorPubMed(supabase, id),
     refreshInvestigatorReporter(supabase, id),

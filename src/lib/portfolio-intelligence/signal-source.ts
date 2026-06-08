@@ -1,4 +1,10 @@
+import {
+  isNihNewGrantByProjectNum,
+  resolveNihProjectNumForItem,
+} from "@/lib/community/signal-nih-funding";
 import type { PortfolioSignalItem, SignalSource } from "@/lib/portfolio-intelligence/mock-data";
+
+export type GrantTimelineSegment = "new_grants" | "continuing_grants";
 
 export function sourceFromItem(item: PortfolioSignalItem): SignalSource {
   const category = (item.category ?? "").toLowerCase();
@@ -58,7 +64,87 @@ export function emptySignalSourceCounts(): SignalSourceCounts {
   };
 }
 
-export type SignalsOverTimeRow = SignalSourceCounts & {
+export type SignalsOverTimeCounts = Omit<SignalSourceCounts, "grants"> &
+  Record<GrantTimelineSegment, number>;
+
+export type SignalsOverTimeSegment = keyof SignalsOverTimeCounts;
+
+export function emptySignalsOverTimeCounts(): SignalsOverTimeCounts {
+  return {
+    publications: 0,
+    new_grants: 0,
+    continuing_grants: 0,
+    clinical_trials: 0,
+    news: 0,
+    honors: 0,
+    patents: 0,
+    social: 0,
+  };
+}
+
+function isContinuingGrantWithoutProjectNum(item: PortfolioSignalItem): boolean {
+  const text = `${item.title} ${item.summaryText ?? ""}`.toLowerCase();
+  return (
+    text.includes("continuing (non-compet") ||
+    text.includes("continuing non-compet") ||
+    text.includes("non-competing") ||
+    text.includes("continuation")
+  );
+}
+
+/** NIH project numbers starting with 1 are new; all others are continuing. */
+export function grantTimelineSegmentFromItem(item: PortfolioSignalItem): GrantTimelineSegment {
+  const projectNum = resolveNihProjectNumForItem(item);
+  if (projectNum) {
+    return isNihNewGrantByProjectNum(projectNum) ? "new_grants" : "continuing_grants";
+  }
+  return isContinuingGrantWithoutProjectNum(item) ? "continuing_grants" : "new_grants";
+}
+
+export const signalsOverTimeStackOrder: SignalsOverTimeSegment[] = [
+  "publications",
+  "new_grants",
+  "continuing_grants",
+  "clinical_trials",
+  "news",
+  "honors",
+  "patents",
+  "social",
+];
+
+export const signalsOverTimeChartColors: Record<SignalsOverTimeSegment, string> = {
+  publications: "#0e7490",
+  new_grants: "#1d4ed8",
+  continuing_grants: "#60a5fa",
+  clinical_trials: "#059669",
+  news: "#8b5cf6",
+  honors: "#d97706",
+  patents: "#64748b",
+  social: "#ec4899",
+};
+
+export const signalsOverTimeLabels: Record<SignalsOverTimeSegment, string> = {
+  publications: "Publications",
+  new_grants: "New grants",
+  continuing_grants: "Continuing grants",
+  clinical_trials: "Clinical Trials",
+  news: "News",
+  honors: "Honors & Awards",
+  patents: "Patents",
+  social: "Social",
+};
+
+export function isSignalsOverTimeSegmentVisible(
+  segment: SignalsOverTimeSegment,
+  visibleSources: SignalSource[]
+): boolean {
+  if (segment === "new_grants" || segment === "continuing_grants") {
+    return visibleSources.includes("grants");
+  }
+  return visibleSources.includes(segment);
+}
+
+export type SignalsOverTimeRow = SignalsOverTimeCounts & {
   monthKey: string;
   monthLabel: string;
   total: number;
