@@ -7,6 +7,7 @@ import {
   searchParamsToFundingListState,
   urlSearchParamsToRecord,
 } from "@/lib/funding-opportunities/funding-list-url";
+import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { useFundingListNavigate } from "@/components/funding/use-funding-list-navigate";
 
 function FundingListKeywordSearchInner({ editorial }: { editorial: boolean }) {
@@ -120,18 +121,7 @@ function FundingListKeywordSearchInner({ editorial }: { editorial: boolean }) {
 export function FundingListKeywordSearch({ editorial = false }: { editorial?: boolean }) {
   return (
     <Suspense
-      fallback={
-        <div
-          className={
-            editorial
-              ? "fo-search px-5 py-8 text-sm font-medium text-[var(--fo-ink-muted)]"
-              : "rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500"
-          }
-          aria-live="polite"
-        >
-          Loading search…
-        </div>
-      }
+      fallback={<PageLoadingState message="Loading search…" compact />}
     >
       <FundingListKeywordSearchInner editorial={editorial} />
     </Suspense>

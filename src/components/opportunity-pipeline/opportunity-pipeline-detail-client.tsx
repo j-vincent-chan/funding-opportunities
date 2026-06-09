@@ -196,7 +196,11 @@ export function OpportunityPipelineDetailClient({
     return n || null;
   }, [fo?.opportunity_number]);
 
-  const externalUrl = resolveFundingSourceUrl(fo?.raw_payload_json);
+  const externalUrl = resolveFundingSourceUrl({
+    raw_payload_json: fo?.raw_payload_json,
+    source_system: fo?.source_system,
+    source_opportunity_id: fo?.source_opportunity_id,
+  });
 
   const itemForNextActions = useMemo(
     () => ({

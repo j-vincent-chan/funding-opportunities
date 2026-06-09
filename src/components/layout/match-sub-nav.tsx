@@ -3,17 +3,41 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
-  { href: "/match/saved", label: "Opportunity pipeline" },
-  { href: "/match/quick", label: "AI-Assisted Matches" },
-] as const;
+const links: {
+  href: string;
+  label: string;
+  disabled: boolean;
+  disabledTitle?: string;
+}[] = [
+  { href: "/match/saved", label: "Opportunity pipeline", disabled: false },
+  {
+    href: "/match/quick",
+    label: "AI-Assisted Matches",
+    disabled: true,
+    disabledTitle: "Not available yet — use Opportunity pipeline",
+  },
+];
 
 export function MatchSubNav() {
   const pathname = usePathname();
   return (
     <nav className="flex flex-wrap gap-2" aria-label="Match types">
-      {links.map(({ href, label }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`);
+      {links.map(({ href, label, disabled, disabledTitle }) => {
+        const active = !disabled && (pathname === href || pathname.startsWith(`${href}/`));
+
+        if (disabled) {
+          return (
+            <span
+              key={href}
+              aria-disabled="true"
+              title={disabledTitle}
+              className="cursor-not-allowed rounded-xl border border-transparent px-4 py-2 text-sm font-semibold text-[var(--fo-ink-faint)] opacity-50"
+            >
+              {label}
+            </span>
+          );
+        }
+
         return (
           <Link
             key={href}

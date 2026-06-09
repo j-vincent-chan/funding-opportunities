@@ -1,15 +1,19 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo } from "react";
+import { PageLoadingState } from "@/components/ui/page-loading-state";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CardBody, CardHeader } from "@/components/ui/card";
 import { ResearchDevFiltersFields } from "@/components/funding/research-dev-filters-fields";
 import { useFundingListNavigate } from "@/components/funding/use-funding-list-navigate";
 import {
   DEFAULT_FUNDING_LIST_PAGE,
+  defaultFundingListClientState,
   defaultSortDirForKey,
+  fundingListDefaultHref,
   isDepartmentSubsEmpty,
   searchParamsToFundingListState,
+  urlHasAgencyFilterParams,
   urlSearchParamsToRecord,
   type FundingListClientState,
   type FundingListSortKey,
@@ -18,33 +22,39 @@ import type { RdListFilterState } from "@/lib/funding-opportunities/rd-list-filt
 
 function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editorial?: boolean }) {
   const sp = useSearchParams();
+  const router = useRouter();
   const { navigate, isPending } = useFundingListNavigate();
 
   const record = useMemo(() => urlSearchParamsToRecord(new URLSearchParams(sp.toString())), [sp]);
   const state = useMemo(() => searchParamsToFundingListState(record), [record]);
 
-  const agencyDefaultApplied = useRef(false);
   useEffect(() => {
-    if (agencyDefaultApplied.current) return;
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("dept") || params.has("hhs") || params.has("sub") || params.has("agency")) {
-      agencyDefaultApplied.current = true;
-      return;
-    }
+    if (urlHasAgencyFilterParams(record)) return;
+
+    const hasDept =
+      state.departments.length > 0 ||
+      !isDepartmentSubsEmpty(state.departmentSubs) ||
+      state.legacyAgencies.length > 0;
+    if (hasDept || state.allDepartments) return;
+
+    const defaults = defaultFundingListClientState();
     const patch: Partial<FundingListClientState> = {
-      departments: ["hhs"],
-      departmentSubs: { hhs: ["nih"] },
+      departments: defaults.departments,
+      departmentSubs: defaults.departmentSubs,
       legacyAgencies: [],
+      allDepartments: false,
       page: DEFAULT_FUNDING_LIST_PAGE,
     };
-    if (!params.has("sort") && !params.has("order")) {
-      patch.sort = "posted_date";
-      patch.order = "desc";
+    if (!record.sort && !record.order) {
+      patch.sort = defaults.sort;
+      patch.order = defaults.order;
     }
     navigate(patch);
-    agencyDefaultApplied.current = true;
-  }, [navigate]);
+  }, [navigate, record, state.allDepartments, state.departments, state.departmentSubs, state.legacyAgencies]);
+
+  const resetToDefaults = useCallback(() => {
+    router.replace(fundingListDefaultHref(), { scroll: false });
+  }, [router]);
 
   const patchRd = useCallback(
     (fn: (prev: RdListFilterState) => RdListFilterState) => {
@@ -65,6 +75,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         nextSubs.hhs = Array.from(hhs);
         patch.departmentSubs = nextSubs;
         patch.legacyAgencies = [];
+        patch.allDepartments = false;
       }
       navigate(patch);
     },
@@ -86,6 +97,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         departments: Array.from(set),
         departmentSubs: nextSubs,
         legacyAgencies: [],
+        allDepartments: false,
         page: DEFAULT_FUNDING_LIST_PAGE,
       });
     },
@@ -111,6 +123,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         departments: Array.from(depts),
         departmentSubs: nextSubs,
         legacyAgencies: [],
+        allDepartments: false,
         page: DEFAULT_FUNDING_LIST_PAGE,
       });
     },
@@ -122,6 +135,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
       departments: [],
       departmentSubs: {},
       legacyAgencies: [],
+      allDepartments: true,
       page: DEFAULT_FUNDING_LIST_PAGE,
     });
   }, [navigate]);
@@ -152,6 +166,23 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
           : { transition: "opacity 120ms ease-out" }
       }
     >
+      <div className="flex items-center justify-between gap-2">
+        <p className={editorial ? "text-[0.65rem] font-bold uppercase tracking-[0.14em] text-[var(--fo-teal)]" : "text-xs font-semibold text-slate-700"}>
+          Filters
+        </p>
+        <button
+          type="button"
+          onClick={resetToDefaults}
+          className={
+            editorial
+              ? "shrink-0 text-[0.7rem] font-semibold text-[var(--fo-interaction)] underline-offset-2 hover:underline"
+              : "shrink-0 text-[0.7rem] font-semibold text-[var(--accent)] underline-offset-2 hover:underline"
+          }
+        >
+          Reset to default
+        </button>
+      </div>
+
       <div>
         <label htmlFor="funding-sort" className={sortLabel}>
           Sort
@@ -209,16 +240,7 @@ export function FundingOpportunitiesFiltersPanel({ editorial = false }: { editor
   return (
     <Suspense
       fallback={
-        <div
-          className={
-            editorial
-              ? "space-y-4 px-1 py-2 text-xs text-[var(--fo-ink-muted)]"
-              : "space-y-4 px-1 py-2 text-xs text-slate-500"
-          }
-          aria-live="polite"
-        >
-          Loading filters…
-        </div>
+        <PageLoadingState message="Loading filters…" compact className="px-1" />
       }
     >
       <FundingOpportunitiesFiltersPanelInner editorial={editorial} />

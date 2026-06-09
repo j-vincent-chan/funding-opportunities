@@ -15,6 +15,7 @@ export type PipelineFundingRow = {
   funding_instrument: string | null;
   status: string | null;
   opportunity_number: string | null;
+  source_system: string | null;
   source_opportunity_id: string | null;
   raw_payload_json: unknown;
 };

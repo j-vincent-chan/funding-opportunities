@@ -38,6 +38,16 @@ export function preprocessText(raw: string): string {
     .trim();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Require phrase boundaries so short tokens (e.g. tme, ai) do not match inside unrelated words. */
+function phraseBoundaryPattern(phrase: string): RegExp {
+  const body = escapeRegExp(phrase).replace(/\s+/g, "\\s+");
+  return new RegExp(`(?<![a-z0-9])${body}(?![a-z0-9])`, "gi");
+}
+
 function longestPhraseMatch(
   text: string,
   synonyms: Record<string, string>
@@ -47,16 +57,28 @@ function longestPhraseMatch(
   let remaining = text;
   for (const phrase of keys) {
     if (!phrase.trim()) continue;
-    let idx = remaining.indexOf(phrase);
-    while (idx !== -1) {
+    const pattern = phraseBoundaryPattern(phrase);
+    let match = pattern.exec(remaining);
+    while (match) {
       const canon = synonyms[phrase];
       out.set(canon, phrase);
+      const idx = match.index;
       remaining =
-        remaining.slice(0, idx) + " ".repeat(phrase.length) + remaining.slice(idx + phrase.length);
-      idx = remaining.indexOf(phrase);
+        remaining.slice(0, idx) + " ".repeat(match[0].length) + remaining.slice(idx + match[0].length);
+      pattern.lastIndex = 0;
+      match = pattern.exec(remaining);
     }
   }
   return out;
+}
+
+/** Drop clinical-trial mentions that are exclusions, not methodological requirements. */
+export function stripNegatedClinicalTrialPhrases(text: string): string {
+  return text
+    .replace(/clinical trials?(?:\s+stud(?:y|ies))?\s+not\s+(?:allowed|permitted|required)/gi, " ")
+    .replace(/clinical trials?\s+not\s+(?:allowed|permitted|required)/gi, " ")
+    .replace(/(?:no|not)\s+clinical trials?(?:\s+stud(?:y|ies))?(?:\s+allowed|\s+permitted)?/gi, " ")
+    .replace(/non[-\s]?clinical(?:\s+trial)?/gi, " ");
 }
 
 function tokensFrom(text: string): string[] {
@@ -89,7 +111,8 @@ export function normalizeTextToTags(raw: string): TagBuckets {
   for (const canon of Array.from(longestPhraseMatch(pre, DISEASE_SYNONYMS).keys())) {
     disease.add(canon);
   }
-  for (const canon of Array.from(longestPhraseMatch(pre, METHOD_SYNONYMS).keys())) {
+  const methodText = stripNegatedClinicalTrialPhrases(pre);
+  for (const canon of Array.from(longestPhraseMatch(methodText, METHOD_SYNONYMS).keys())) {
     method.add(canon);
   }
   for (const canon of Array.from(longestPhraseMatch(pre, TRANSLATIONAL_SYNONYMS).keys())) {

@@ -1,6 +1,7 @@
 import { mergeTagBuckets, normalizeTextToTags, preprocessText } from "@/lib/normalization/normalize-text-to-tags";
 import type { TagBuckets } from "@/lib/normalization/normalize-text-to-tags";
 import { coercePlainTextFromUnknown } from "@/lib/formatting/coerce-plain-text";
+import { enrichOpportunityQuickTags, type OpportunityTagSignals } from "@/lib/quick-match/enrich-opportunity-quick-tags";
 import type { QuickMatchBuckets } from "./types";
 
 function uniqSorted(arr: string[]): string[] {
@@ -31,12 +32,14 @@ export function extractOpportunityQuickTags(input: {
   description?: string | null;
   agency?: string | null;
   agency_code?: string | null;
+  opportunity_number?: string | null;
   category?: string | null;
   funding_instrument?: string | null;
   applicant_types?: unknown;
   raw_payload_json?: unknown;
 }): QuickMatchBuckets {
   const chunks: string[] = [input.title];
+  if (input.opportunity_number) chunks.push(String(input.opportunity_number));
   if (input.description) chunks.push(String(input.description));
   if (input.agency) chunks.push(String(input.agency));
   if (input.agency_code) chunks.push(String(input.agency_code));
@@ -49,7 +52,16 @@ export function extractOpportunityQuickTags(input: {
   const raw = input.raw_payload_json;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const o = raw as Record<string, unknown>;
-    for (const key of ["summary", "eligibility", "agency_name", "opportunity_title"]) {
+    for (const key of [
+      "summary",
+      "eligibility",
+      "agency_name",
+      "opportunity_title",
+      "funding_category",
+      "fundingCategory",
+      "category_description",
+      "synopsis",
+    ]) {
       const v = o[key];
       if (typeof v === "string" && v.trim()) chunks.push(v);
       else if (v && typeof v === "object") chunks.push(JSON.stringify(v).slice(0, 4000));
@@ -63,4 +75,12 @@ export function extractOpportunityQuickTags(input: {
   }
 
   return toQuickMatch(acc);
+}
+
+/** Text-derived tags plus NIH triage signals stored on the opportunity row. */
+export function buildOpportunityQuickTags(
+  input: Parameters<typeof extractOpportunityQuickTags>[0],
+  signals: OpportunityTagSignals
+): QuickMatchBuckets {
+  return enrichOpportunityQuickTags(extractOpportunityQuickTags(input), signals);
 }

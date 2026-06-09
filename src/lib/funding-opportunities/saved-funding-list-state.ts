@@ -18,6 +18,9 @@ const TABS = new Set<FundingListViewTab>([
   "closing_soon",
   "new_this_week",
   "large_awards",
+  "esi_career",
+  "investigator_initiated",
+  "foundations",
   "saved",
   "immunology_translational",
 ]);
@@ -92,6 +95,8 @@ const fundingListClientStateSchema = z
     q: z.string().catch(""),
     scope: z.unknown().transform(normalizeScope),
     tab: z.unknown().transform(normalizeTab).optional(),
+    closingDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
+    postedDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(),
     sort: z.string().catch("posted_date"),
     order: z.enum(["asc", "desc"]).catch("desc"),
     page: z.number().int().positive().optional().catch(DEFAULT_FUNDING_LIST_PAGE),
@@ -108,6 +113,14 @@ const fundingListClientStateSchema = z
       q: partial.q ?? "",
       scope: typeof partial.scope === "string" ? normalizeScope(partial.scope) : normalizeScope(undefined),
       tab: normalizeTab(partial.tab),
+      closingDays:
+        partial.closingDays === 30 || partial.closingDays === 60 || partial.closingDays === 90
+          ? partial.closingDays
+          : undefined,
+      postedDays:
+        partial.postedDays === 7 || partial.postedDays === 30 || partial.postedDays === 90
+          ? partial.postedDays
+          : undefined,
       sort: partial.sort ?? "posted_date",
       order: partial.order === "asc" || partial.order === "desc" ? partial.order : "desc",
       page: DEFAULT_FUNDING_LIST_PAGE,

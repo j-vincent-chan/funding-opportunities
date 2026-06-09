@@ -191,7 +191,7 @@ export function ResearchDevFiltersFields({
         </select>
       </details>
 
-      <details className={dBox}>
+      <details className={dBox} open>
         <FilterDisclosureSummary editorial={editorial}>Department</FilterDisclosureSummary>
         <div className="mt-2 max-h-[min(58vh,28rem)] space-y-2 overflow-y-auto pr-0.5">
           <MultiGroupAnyRow

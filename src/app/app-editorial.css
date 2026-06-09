@@ -43,6 +43,16 @@
   --fo-sage: #6bbf6a;
   --fo-sage-soft: #e8f6ea;
 
+  /* Saved / bookmark — golden amber anchored to semantic warn + brand teal */
+  --fo-gold: #d4a24a;
+  --fo-gold-deep: #9a6b1e;
+  --fo-gold-bright: #e8b45f;
+  --fo-gold-soft: var(--fo-warn-bg);
+  --fo-gold-fill: color-mix(in srgb, var(--fo-warn-border) 82%, var(--fo-brand) 18%);
+  --fo-gold-fill-deep: color-mix(in srgb, var(--fo-warn-border) 62%, var(--fo-warn-text) 38%);
+  --fo-gold-ring: color-mix(in srgb, var(--fo-warn-border) 38%, transparent);
+  --fo-gold-shadow: color-mix(in srgb, var(--fo-warn-text) 22%, transparent);
+
   /* Community / list markers — neutral slate & green (not ambient blue wash) */
   --fo-stripe-0: #5b6676;
   --fo-stripe-1: #4a6b55;
@@ -332,6 +342,15 @@
   background: var(--fo-row-hover);
 }
 
+.app-editorial-root .fo-funding-page .fo-funding-results-row.fo-row-forecasted {
+  background: color-mix(in srgb, var(--fo-warn-bg) 22%, var(--fo-paper));
+  box-shadow: inset 4px 0 0 color-mix(in srgb, var(--fo-warn-border) 88%, transparent);
+}
+
+.app-editorial-root .fo-funding-page .fo-funding-results-row.fo-row-forecasted:hover {
+  background: color-mix(in srgb, var(--fo-warn-bg) 30%, var(--fo-row-hover));
+}
+
 .app-editorial-root .fo-funding-page .fo-search {
   border-top-color: color-mix(in srgb, var(--fo-accent) 70%, transparent);
   box-shadow: var(--fo-shadow-raised);
@@ -349,4 +368,20 @@
 
 .app-editorial-root .fo-funding-page details.fo-panel[open] > summary {
   border-bottom: 1px solid var(--fo-divider);
+}
+
+@keyframes fo-peek-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.app-editorial-root .fo-peek-panel {
+  animation: fo-peek-slide-in 180ms ease-out;
+  will-change: transform;
+  background-color: #ffffff;
+  isolation: isolate;
 }

@@ -4,6 +4,7 @@ import { useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   fundingListHref,
+  isDepartmentSubsEmpty,
   searchParamsToFundingListState,
   urlSearchParamsToRecord,
   type FundingListClientState,
@@ -24,7 +25,21 @@ export function useFundingListNavigate(): {
       startTransition(() => {
         const params = new URLSearchParams(window.location.search.slice(1));
         const base = searchParamsToFundingListState(urlSearchParamsToRecord(params));
-        router.replace(fundingListHref({ ...base, ...patch }), { scroll: false });
+        const next: FundingListClientState = { ...base, ...patch };
+        if (patch.allDepartments === true) {
+          next.allDepartments = true;
+        } else if (
+          patch.departments !== undefined ||
+          patch.departmentSubs !== undefined ||
+          patch.legacyAgencies !== undefined
+        ) {
+          const hasDept =
+            (next.departments?.length ?? 0) > 0 ||
+            !isDepartmentSubsEmpty(next.departmentSubs) ||
+            (next.legacyAgencies?.length ?? 0) > 0;
+          if (hasDept) next.allDepartments = false;
+        }
+        router.replace(fundingListHref(next), { scroll: false });
       });
     },
     [router]

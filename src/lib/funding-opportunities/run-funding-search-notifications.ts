@@ -27,7 +27,7 @@ export async function runFundingSearchNotificationsJob(
 
   const { data: subs, error: subErr } = await supabase
     .from("saved_funding_searches")
-    .select("id, name, state, user_id")
+    .select("id, name, state, user_id, alert_frequency, alert_forecasted_notices")
     .eq("email_notifications_enabled", true);
 
   if (subErr) {
@@ -63,6 +63,8 @@ export async function runFundingSearchNotificationsJob(
       name: string;
       state: unknown;
       user_id: string;
+      alert_frequency?: string | null;
+      alert_forecasted_notices?: boolean | null;
     };
     const toEmail = emailByUser.get(rid.user_id);
     if (!toEmail?.trim()) {
@@ -76,7 +78,9 @@ export async function runFundingSearchNotificationsJob(
       continue;
     }
 
-    const { rows, warning } = await fetchRecentMatchingOpportunitiesForSavedSearch(supabase, state, sinceIso);
+    const { rows, warning } = await fetchRecentMatchingOpportunitiesForSavedSearch(supabase, state, sinceIso, {
+      includeForecasted: rid.alert_forecasted_notices !== false,
+    });
     if (warning) warnings.push(`Saved search ${rid.id}: ${warning}`);
 
     if (rows.length === 0) continue;

@@ -1,41 +1,52 @@
-import { DotSphereIcon } from "@/components/ui/dot-sphere-icon";
+import { Spinner } from "@/components/ui/spinner";
 
 type PageLoadingVariant = "light" | "terminal";
 
 export function PageLoadingState({
-  message = "Scanning…",
+  message = "Loading…",
   detail,
   variant = "light",
+  compact = false,
+  fill = false,
   className = "",
 }: {
   message?: string;
   detail?: string;
   variant?: PageLoadingVariant;
+  /** Smaller padding for Suspense fallbacks and inline panels. */
+  compact?: boolean;
+  /** Fill available height (peek panel, flex children). */
+  fill?: boolean;
   className?: string;
 }) {
   const isTerminal = variant === "terminal";
+  const spinnerClass = isTerminal ? "border-slate-600 border-t-cyan-400" : "";
+
+  const layout = fill
+    ? "flex flex-1 flex-col items-center justify-center gap-3 text-center"
+    : compact
+      ? "flex flex-col items-center justify-center gap-3 py-8 text-center"
+      : "flex min-h-[min(52vh,28rem)] w-full flex-col items-center justify-center gap-3 px-6 py-16 text-center";
 
   return (
-    <div
-      className={`flex min-h-[min(52vh,28rem)] w-full flex-col items-center justify-center px-6 py-16 ${className}`}
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <DotSphereIcon variant={variant} size={112} />
+    <div className={`${layout} ${className}`} role="status" aria-live="polite" aria-busy="true">
+      <Spinner size={compact || fill ? "md" : "lg"} className={spinnerClass} />
       <p
-        className={`mt-8 text-sm font-medium tracking-wide ${
+        className={`text-sm font-medium ${
           isTerminal ? "text-[#94a3b8]" : "text-[var(--fo-ink-muted)]"
         }`}
       >
         {message}
       </p>
       {detail ? (
-        <p className={`mt-2 max-w-sm text-center text-xs ${isTerminal ? "text-[#64748b]" : "text-[var(--fo-ink-muted)]/80"}`}>
+        <p
+          className={`max-w-sm text-xs ${
+            isTerminal ? "text-[#64748b]" : "text-[var(--fo-ink-muted)]/80"
+          }`}
+        >
           {detail}
         </p>
       ) : null}
     </div>
   );
 }
-

@@ -40,6 +40,72 @@ export type FundingNotificationCandidateRow = {
 
 const NOTIFICATION_FETCH_LIMIT = 2500;
 
+/** Same lookback window as funding-search-notifications cron digests. */
+export const FUNDING_SEARCH_NEW_MATCH_LOOKBACK_HOURS = 72;
+
+export type SavedSearchMatchQueryOptions = {
+  includeForecasted?: boolean;
+};
+
+export type SavedSearchMatchStats = {
+  newResultsRecent: number;
+  newMatchesSinceViewed: number;
+  lastMatchedAt: string | null;
+};
+
+export async function countRecentMatchingOpportunitiesForSavedSearch(
+  supabase: SupabaseClient,
+  state: FundingListClientState,
+  sinceIso?: string,
+  options?: SavedSearchMatchQueryOptions
+): Promise<number> {
+  const since =
+    sinceIso ??
+    new Date(Date.now() - FUNDING_SEARCH_NEW_MATCH_LOOKBACK_HOURS * 3600 * 1000).toISOString();
+  const { rows } = await fetchRecentMatchingOpportunitiesForSavedSearch(supabase, state, since, options);
+  return rows.length;
+}
+
+export async function getSavedSearchMatchStats(
+  supabase: SupabaseClient,
+  state: FundingListClientState,
+  input: {
+    lastViewedAt?: string | null;
+    includeForecasted?: boolean;
+  }
+): Promise<SavedSearchMatchStats> {
+  const recentSince = new Date(
+    Date.now() - FUNDING_SEARCH_NEW_MATCH_LOOKBACK_HOURS * 3600 * 1000
+  ).toISOString();
+  const options: SavedSearchMatchQueryOptions = {
+    includeForecasted: input.includeForecasted ?? true,
+  };
+  const { rows: recentRows } = await fetchRecentMatchingOpportunitiesForSavedSearch(
+    supabase,
+    state,
+    recentSince,
+    options
+  );
+
+  const viewedSince = input.lastViewedAt?.trim() || null;
+  let newMatchesSinceViewed = recentRows.length;
+  if (viewedSince) {
+    const viewedMs = new Date(viewedSince).getTime();
+    newMatchesSinceViewed = recentRows.filter((row) => {
+      const updatedMs = new Date(row.updated_at).getTime();
+      return Number.isFinite(updatedMs) && updatedMs > viewedMs;
+    }).length;
+  }
+
+  const lastMatchedAt = recentRows[0]?.updated_at ?? null;
+
+  return {
+    newResultsRecent: recentRows.length,
+    newMatchesSinceViewed,
+    lastMatchedAt,
+  };
+}
+
 /**
  * Opportunities updated since `sinceIso` that match keyword/agency/NIH IC + RD filters,
  * then narrowed to posted/forecasted rows that satisfy the saved list scope.
@@ -47,8 +113,10 @@ const NOTIFICATION_FETCH_LIMIT = 2500;
 export async function fetchRecentMatchingOpportunitiesForSavedSearch(
   supabase: SupabaseClient,
   state: FundingListClientState,
-  sinceIso: string
+  sinceIso: string,
+  options?: SavedSearchMatchQueryOptions
 ): Promise<{ rows: FundingNotificationCandidateRow[]; warning?: string }> {
+  const includeForecasted = options?.includeForecasted !== false;
   const agencySelection = {
     departments: state.departments,
     departmentSubs: state.departmentSubs,
@@ -96,6 +164,7 @@ export async function fetchRecentMatchingOpportunitiesForSavedSearch(
   const rows: FundingNotificationCandidateRow[] = [];
   for (const r of raw) {
     const bucket = fundingListRowScope(r, today);
+    if (!includeForecasted && bucket === "forecasted") continue;
     if (!fundingListRowEligibleForEmailNotification(bucket, state.scope)) continue;
     rows.push(r);
   }

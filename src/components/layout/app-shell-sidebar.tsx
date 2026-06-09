@@ -6,6 +6,7 @@ import { useEffect, useState, type ComponentType, type SVGProps } from "react";
 import { signOut } from "@/app/actions/auth";
 import { ProsperaLogo } from "@/components/layout/prospera-logo";
 import { PoweredByOcr } from "@/components/layout/powered-by-ocr";
+import { fundingListDefaultHref } from "@/lib/funding-opportunities/funding-list-url";
 import {
   SidebarIconInvestigators,
   SidebarIconMatch,
@@ -35,7 +36,7 @@ const sections: { heading: string; items: NavItem[] }[] = [
     heading: "Workspace",
     items: [
       {
-        href: "/funding-opportunities",
+        href: fundingListDefaultHref(),
         label: "Opportunities",
         Icon: SidebarIconSearch,
         isActive: (p) => p === "/" || p.startsWith("/funding-opportunities"),
@@ -53,10 +54,10 @@ const sections: { heading: string; items: NavItem[] }[] = [
         isActive: (p) => p.startsWith("/investigators"),
       },
       {
-        href: "/match/quick",
+        href: "/match/saved",
         label: "Matchmaker",
         Icon: SidebarIconMatch,
-        isActive: (p) => p.startsWith("/match/quick"),
+        isActive: (p) => p === "/match" || p.startsWith("/match/saved"),
       },
       {
         href: "/match/saved",

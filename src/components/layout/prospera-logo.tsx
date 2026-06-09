@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { fundingListDefaultHref } from "@/lib/funding-opportunities/funding-list-url";
 
 const ICON = {
   src: "/brand/prospera-app-icon.png",
@@ -29,7 +30,7 @@ const TAGLINE_GRADIENT =
 
 export function ProsperaLogo({
   variant,
-  href = "/funding-opportunities",
+  href = fundingListDefaultHref(),
   linked = true,
   className = "",
 }: ProsperaLogoProps) {

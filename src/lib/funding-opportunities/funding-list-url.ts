@@ -8,13 +8,29 @@ import {
   type RdListFilterState,
 } from "@/lib/funding-opportunities/rd-list-filters";
 
+/** URL param for Notion-style side peek panel on the funding list. */
+export const FUNDING_PEEK_PARAM = "peek";
+
+export function parsePeekOpportunityId(searchParams: SearchParams): string | null {
+  const raw = firstStringParam(searchParams[FUNDING_PEEK_PARAM]).trim();
+  if (!raw) return null;
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw);
+  return uuid ? raw : null;
+}
+
 export type FundingListScope = "any" | "all" | "open" | "forecasted" | "closed";
+export type ClosingSoonDays = 30 | 60 | 90;
+export type PostedWithinDays = 7 | 30 | 90;
 export type FundingListViewTab =
   | "all"
   | "recommended"
   | "closing_soon"
   | "new_this_week"
   | "large_awards"
+  | "esi_career"
+  | "investigator_initiated"
+  | "foundations"
   | "saved"
   | "immunology_translational";
 
@@ -23,7 +39,7 @@ export const FUNDING_LIST_PAGE_SIZES = [50, 100, 250, 500, 1000] as const;
 export type FundingListPageSize = (typeof FUNDING_LIST_PAGE_SIZES)[number];
 
 export const DEFAULT_FUNDING_LIST_PAGE = 1;
-export const DEFAULT_FUNDING_LIST_PER_PAGE = 100;
+export const DEFAULT_FUNDING_LIST_PER_PAGE = 50;
 
 export type FundingListSortKey =
   | "title"
@@ -37,6 +53,10 @@ export type FundingListClientState = {
   q: string;
   scope: FundingListScope;
   tab?: FundingListViewTab;
+  /** When tab is closing_soon, optional horizon in days (default 90). */
+  closingDays?: ClosingSoonDays;
+  /** When tab is new_this_week, optional lookback in days (default 7). */
+  postedDays?: PostedWithinDays;
   sort: string;
   order: "asc" | "desc";
   /** 1-based page index (URL `page`). */
@@ -49,8 +69,48 @@ export type FundingListClientState = {
   departmentSubs: DepartmentSubsSelection;
   /** Legacy `?agency=` tokens; used only when no department filters are present. */
   legacyAgencies: string[];
+  /** When true, URL uses `dept=all` (cross-department; skip HHS/NIH auto-default). */
+  allDepartments?: boolean;
   rd: RdListFilterState;
 };
+
+/** Default funding list: HHS/NIH, open+forecasted scope, posted date sort. */
+export function defaultFundingListClientState(): FundingListClientState {
+  return {
+    q: "",
+    scope: "all",
+    tab: "all",
+    sort: "posted_date",
+    order: "desc",
+    page: DEFAULT_FUNDING_LIST_PAGE,
+    perPage: DEFAULT_FUNDING_LIST_PER_PAGE,
+    departments: ["hhs"],
+    departmentSubs: { hhs: ["nih"] },
+    legacyAgencies: [],
+    allDepartments: false,
+    rd: parseRdListFilters({}),
+  };
+}
+
+export function fundingListDefaultHref(): string {
+  return fundingListHref(defaultFundingListClientState());
+}
+
+function isExplicitAllDepartmentsParam(searchParams: SearchParams): boolean {
+  const raw = searchParams.dept;
+  if (raw === "all") return true;
+  if (Array.isArray(raw) && raw.some((v) => v === "all")) return true;
+  return false;
+}
+
+export function urlHasAgencyFilterParams(searchParams: SearchParams): boolean {
+  if (isExplicitAllDepartmentsParam(searchParams)) return true;
+  if (searchParams.dept !== undefined) return true;
+  if (searchParams.hhs !== undefined) return true;
+  if (searchParams.sub !== undefined) return true;
+  if (searchParams.agency !== undefined) return true;
+  return false;
+}
 
 export function urlSearchParamsToRecord(sp: URLSearchParams): SearchParams {
   const out: SearchParams = {};
@@ -94,6 +154,7 @@ export function departmentsFromSearchParams(searchParams: SearchParams): string[
   for (const item of list) {
     if (typeof item !== "string" || !item.trim()) continue;
     const id = item.trim();
+    if (id === "all") continue;
     if (isKnownDepartmentId(id)) out.push(id);
   }
   return Array.from(new Set(out));
@@ -182,12 +243,27 @@ export function resolveListTab(searchParams: SearchParams): FundingListViewTab {
     raw === "closing_soon" ||
     raw === "new_this_week" ||
     raw === "large_awards" ||
+    raw === "esi_career" ||
+    raw === "investigator_initiated" ||
+    raw === "foundations" ||
     raw === "saved" ||
     raw === "immunology_translational"
   ) {
     return raw;
   }
   return "all";
+}
+
+export function parseClosingDays(searchParams: SearchParams): ClosingSoonDays | undefined {
+  const raw = typeof searchParams.closing_days === "string" ? parseInt(searchParams.closing_days, 10) : NaN;
+  if (raw === 30 || raw === 60 || raw === 90) return raw;
+  return undefined;
+}
+
+export function parsePostedDays(searchParams: SearchParams): PostedWithinDays | undefined {
+  const raw = typeof searchParams.posted_days === "string" ? parseInt(searchParams.posted_days, 10) : NaN;
+  if (raw === 7 || raw === 30 || raw === 90) return raw;
+  return undefined;
 }
 
 export function defaultSortDirForKey(key: FundingListSortKey): "asc" | "desc" {
@@ -246,10 +322,13 @@ export function nextColumnSort(
 export function searchParamsToFundingListState(searchParams: SearchParams): FundingListClientState {
   const sort = parseListSort(searchParams);
   const { page, perPage } = parseFundingListPagination(searchParams);
+  const tab = resolveListTab(searchParams);
   return {
     q: firstStringParam(searchParams.q),
     scope: resolveListScope(searchParams),
-    tab: resolveListTab(searchParams),
+    tab,
+    closingDays: tab === "closing_soon" ? parseClosingDays(searchParams) : undefined,
+    postedDays: tab === "new_this_week" ? parsePostedDays(searchParams) : undefined,
     sort: sortParamForKey(sort.key),
     order: sort.dir,
     page,
@@ -257,6 +336,7 @@ export function searchParamsToFundingListState(searchParams: SearchParams): Fund
     departments: departmentsFromSearchParams(searchParams),
     departmentSubs: departmentSubsFromSearchParams(searchParams),
     legacyAgencies: agenciesFromSearchParams(searchParams),
+    allDepartments: isExplicitAllDepartmentsParam(searchParams),
     rd: parseRdListFilters(searchParams),
   };
 }
@@ -266,21 +346,36 @@ export function fundingListHref(state: FundingListClientState): string {
   if (state.q.trim()) p.set("q", state.q.trim());
   p.set("scope", state.scope);
   if (state.tab && state.tab !== "all") p.set("tab", state.tab);
+  if (state.tab === "closing_soon" && state.closingDays) {
+    p.set("closing_days", String(state.closingDays));
+  }
+  if (state.tab === "new_this_week" && state.postedDays) {
+    p.set("posted_days", String(state.postedDays));
+  }
   p.set("sort", state.sort);
   p.set("order", state.order);
   if (state.page > DEFAULT_FUNDING_LIST_PAGE) p.set("page", String(state.page));
   if (state.perPage !== DEFAULT_FUNDING_LIST_PER_PAGE) p.set("per", String(state.perPage));
-  for (const d of state.departments) {
-    p.append("dept", d);
-  }
-  for (const [dept, subs] of Object.entries(state.departmentSubs)) {
-    if (!subs || subs.length === 0) continue;
-    for (const sid of subs) {
-      p.append("sub", `${dept}:${sid}`);
+  if (
+    state.allDepartments &&
+    state.departments.length === 0 &&
+    isDepartmentSubsEmpty(state.departmentSubs) &&
+    state.legacyAgencies.length === 0
+  ) {
+    p.set("dept", "all");
+  } else {
+    for (const d of state.departments) {
+      p.append("dept", d);
     }
-  }
-  for (const a of state.legacyAgencies) {
-    p.append("agency", a);
+    for (const [dept, subs] of Object.entries(state.departmentSubs)) {
+      if (!subs || subs.length === 0) continue;
+      for (const sid of subs) {
+        p.append("sub", `${dept}:${sid}`);
+      }
+    }
+    for (const a of state.legacyAgencies) {
+      p.append("agency", a);
+    }
   }
   appendRdListFiltersToUrlSearchParams(p, state.rd);
   const s = p.toString();

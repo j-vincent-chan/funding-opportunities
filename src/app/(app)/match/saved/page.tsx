@@ -32,6 +32,7 @@ const SAVED_SELECT = `
     funding_instrument,
     status,
     opportunity_number,
+    source_system,
     source_opportunity_id,
     raw_payload_json
   ),
