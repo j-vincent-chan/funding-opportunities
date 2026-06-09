@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendFundingSearchDigestEmail } from "@/lib/email/send-funding-search-digest";
 import { fetchRecentMatchingOpportunitiesForSavedSearch } from "@/lib/funding-opportunities/funding-search-notification-query";
 import { parseSavedFundingListState } from "@/lib/funding-opportunities/saved-funding-list-state";
+import {
+  resolveSavedSearchAlertRecipientEmails,
+  savedSearchDigestDue,
+} from "@/lib/funding-opportunities/saved-search-alert-recipients";
 
 const LOOKBACK_HOURS = 72;
 
@@ -27,10 +31,31 @@ export async function runFundingSearchNotificationsJob(
 
   const { data: subs, error: subErr } = await supabase
     .from("saved_funding_searches")
-    .select("id, name, state, user_id, alert_frequency, alert_forecasted_notices")
+    .select(
+      "id, name, state, user_id, alert_frequency, alert_forecasted_notices, alert_rdsg_owner_ids, last_digest_sent_at"
+    )
     .eq("email_notifications_enabled", true);
 
   if (subErr) {
+    if (/alert_rdsg_owner_ids|last_digest_sent_at/i.test(subErr.message)) {
+      const legacy = await supabase
+        .from("saved_funding_searches")
+        .select("id, name, state, user_id, alert_frequency, alert_forecasted_notices")
+        .eq("email_notifications_enabled", true);
+      if (legacy.error) {
+        warnings.push(`Load subscriptions: ${legacy.error.message}`);
+        return {
+          subscriptions: 0,
+          skippedNoEmailProvider: !hasResend,
+          emailsSent: 0,
+          emailsFailed: 0,
+          opportunityMatchesConsidered: 0,
+          warnings,
+        };
+      }
+      return runLegacySubscriptions(supabase, legacy.data ?? [], sinceIso, hasResend, warnings);
+    }
+
     warnings.push(`Load subscriptions: ${subErr.message}`);
     return {
       subscriptions: 0,
@@ -42,6 +67,131 @@ export async function runFundingSearchNotificationsJob(
     };
   }
 
+  let emailsSent = 0;
+  let emailsFailed = 0;
+  let opportunityMatchesConsidered = 0;
+
+  for (const row of subs ?? []) {
+    const rid = row as {
+      id: string;
+      name: string;
+      state: unknown;
+      user_id: string;
+      alert_frequency?: string | null;
+      alert_forecasted_notices?: boolean | null;
+      alert_rdsg_owner_ids?: string[] | null;
+      last_digest_sent_at?: string | null;
+    };
+
+    if (!savedSearchDigestDue(rid.alert_frequency, rid.last_digest_sent_at)) {
+      continue;
+    }
+
+    const { emails: recipientEmails, warnings: recipientWarnings } =
+      await resolveSavedSearchAlertRecipientEmails(supabase, {
+        userId: rid.user_id,
+        alertRdsgOwnerIds: rid.alert_rdsg_owner_ids ?? [],
+      });
+    warnings.push(...recipientWarnings.map((w) => `Saved search ${rid.id}: ${w}`));
+
+    if (recipientEmails.length === 0) {
+      warnings.push(`Saved search ${rid.id}: no recipient emails; skip.`);
+      continue;
+    }
+
+    const state = parseSavedFundingListState(rid.state);
+    if (!state) {
+      warnings.push(`Saved search ${rid.id}: invalid state JSON; skip.`);
+      continue;
+    }
+
+    const { rows, warning } = await fetchRecentMatchingOpportunitiesForSavedSearch(supabase, state, sinceIso, {
+      includeForecasted: rid.alert_forecasted_notices !== false,
+    });
+    if (warning) warnings.push(`Saved search ${rid.id}: ${warning}`);
+
+    if (rows.length === 0) continue;
+
+    const ids = rows.map((r) => r.id);
+    const { data: already } = await supabase
+      .from("saved_funding_search_notification_sends")
+      .select("opportunity_id")
+      .eq("saved_search_id", rid.id)
+      .in("opportunity_id", ids);
+
+    const sentSet = new Set((already ?? []).map((a) => (a as { opportunity_id: string }).opportunity_id));
+    const fresh = rows.filter((r) => !sentSet.has(r.id));
+    if (fresh.length === 0) continue;
+
+    opportunityMatchesConsidered += fresh.length;
+
+    if (!hasResend) continue;
+
+    const send = await sendFundingSearchDigestEmail({
+      to: recipientEmails,
+      searchName: rid.name,
+      lines: fresh.map((r) => ({
+        id: r.id,
+        title: r.title,
+        agency: r.agency,
+        opportunityNumber: r.opportunity_number,
+      })),
+    });
+
+    if (!send.ok) {
+      emailsFailed += 1;
+      warnings.push(`Email failed for saved search ${rid.id}: ${send.error}`);
+      continue;
+    }
+
+    const inserts = fresh.map((r) => ({
+      saved_search_id: rid.id,
+      opportunity_id: r.id,
+    }));
+
+    let logOk = true;
+    const chunkSize = 200;
+    for (let i = 0; i < inserts.length; i += chunkSize) {
+      const chunk = inserts.slice(i, i + chunkSize);
+      const { error: insErr } = await supabase.from("saved_funding_search_notification_sends").insert(chunk);
+      if (insErr) {
+        emailsFailed += 1;
+        warnings.push(`Log sends failed for ${rid.id}: ${insErr.message}`);
+        logOk = false;
+        break;
+      }
+    }
+    if (!logOk) continue;
+
+    const { error: stampErr } = await supabase
+      .from("saved_funding_searches")
+      .update({ last_digest_sent_at: new Date().toISOString() })
+      .eq("id", rid.id);
+
+    if (stampErr) {
+      warnings.push(`Update last_digest_sent_at for ${rid.id}: ${stampErr.message}`);
+    }
+
+    emailsSent += 1;
+  }
+
+  return {
+    subscriptions: (subs ?? []).length,
+    skippedNoEmailProvider: !hasResend,
+    emailsSent,
+    emailsFailed,
+    opportunityMatchesConsidered,
+    warnings,
+  };
+}
+
+async function runLegacySubscriptions(
+  supabase: SupabaseClient,
+  subs: unknown[],
+  sinceIso: string,
+  hasResend: boolean,
+  warnings: string[]
+): Promise<FundingSearchNotificationJobResult> {
   const userIds = Array.from(new Set((subs ?? []).map((s) => (s as { user_id: string }).user_id)));
   const emailByUser = new Map<string, string | null>();
   if (userIds.length > 0) {
@@ -122,19 +272,12 @@ export async function runFundingSearchNotificationsJob(
       opportunity_id: r.id,
     }));
 
-    let logOk = true;
-    const chunkSize = 200;
-    for (let i = 0; i < inserts.length; i += chunkSize) {
-      const chunk = inserts.slice(i, i + chunkSize);
-      const { error: insErr } = await supabase.from("saved_funding_search_notification_sends").insert(chunk);
-      if (insErr) {
-        emailsFailed += 1;
-        warnings.push(`Log sends failed for ${rid.id}: ${insErr.message}`);
-        logOk = false;
-        break;
-      }
+    const { error: insErr } = await supabase.from("saved_funding_search_notification_sends").insert(inserts);
+    if (insErr) {
+      emailsFailed += 1;
+      warnings.push(`Log sends failed for ${rid.id}: ${insErr.message}`);
+      continue;
     }
-    if (!logOk) continue;
 
     emailsSent += 1;
   }

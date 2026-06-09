@@ -14,10 +14,7 @@ import { Select } from "@/components/ui/select";
 import { PipelineListMetricsRow } from "@/components/opportunity-pipeline/pipeline-list-metrics-row";
 import { PipelineListNextActionsCard } from "@/components/opportunity-pipeline/pipeline-list-next-actions-card";
 import { MonitorOpportunityPiPanel } from "@/components/opportunity-pipeline/monitor-opportunity-pi-panel";
-import {
-  TriageCommunityPiPanel,
-  type CommunityInvestigatorHit,
-} from "@/components/opportunity-pipeline/triage-community-pi-panel";
+import { TriageOpportunityWorkflow } from "@/components/opportunity-pipeline/triage-opportunity-workflow";
 import {
   PIPELINE_BUCKET_LABEL,
   PIPELINE_BUCKET_TABS,
@@ -74,9 +71,9 @@ function stripeForIndex(i: number) {
   return COMMUNITY_STRIPES[i % COMMUNITY_STRIPES.length]!;
 }
 
-/** A named research community is selected (not Untagged / All). */
+/** A named research community filter tab (not All). */
 function isPipelineCommunityFilterTab(tab: string): boolean {
-  return tab !== "none" && tab !== "all";
+  return tab !== "all";
 }
 
 function passesRefineFilters(
@@ -122,73 +119,6 @@ function passesRefineFilters(
   return true;
 }
 
-function TriageOpportunityCommunities({
-  opportunityId,
-  row,
-  communities,
-  disabled,
-  onUpdated,
-  compact = false,
-}: {
-  opportunityId: string;
-  row: NormalizedPipelineItem;
-  communities: PipelineCommunityRef[];
-  disabled: boolean;
-  onUpdated: () => void;
-  compact?: boolean;
-}) {
-  const ids = row.communities.map((c) => c.id);
-  const selected = new Set(ids);
-  const [pending, startTransition] = useTransition();
-
-  function toggle(cid: string) {
-    const next = selected.has(cid) ? ids.filter((x) => x !== cid) : [...ids, cid];
-    startTransition(async () => {
-      const r = await setSavedOpportunityCommunitiesAction({
-        opportunityId,
-        communityIds: next,
-      });
-      if (!r.ok) window.alert(r.error);
-      else onUpdated();
-    });
-  }
-
-  const chipBase =
-    "inline-flex cursor-pointer items-center gap-1.5 rounded-md border font-medium transition-colors duration-150";
-  const chipSize = compact
-    ? "max-w-full px-2 py-0.5 text-[0.6875rem] leading-snug [overflow-wrap:anywhere]"
-    : "px-2.5 py-1 text-xs leading-snug [overflow-wrap:anywhere]";
-
-  return (
-    <div className={`flex flex-wrap gap-1.5 ${compact ? "" : "mt-2"}`}>
-      {!compact ? (
-        <span className="w-full text-[0.65rem] font-bold uppercase tracking-wide text-[var(--fo-ink-muted)]">Tag communities</span>
-      ) : null}
-      {communities.map((c, idx) => {
-        const checked = selected.has(c.id);
-        const stripe = stripeForIndex(idx);
-        return (
-          <label
-            key={c.id}
-            className={`${chipBase} ${chipSize} ${
-              checked ? `${stripe.chipOn} hover:opacity-[0.98]` : `${stripe.chipOff} hover:brightness-[0.99]`
-            }`}
-          >
-            <input
-              type="checkbox"
-              className="h-4 w-4 shrink-0 rounded border-[var(--fo-border)] text-[var(--fo-interaction)] focus:ring-2 focus:ring-[var(--fo-focus-ring)]"
-              checked={checked}
-              disabled={disabled || pending}
-              onChange={() => toggle(c.id)}
-            />
-            {c.label}
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
 export function OpportunityPipelineListClient({
   items,
   profiles,
@@ -200,10 +130,8 @@ export function OpportunityPipelineListClient({
 }) {
   const router = useRouter();
   const [bucketTab, setBucketTab] = useState<PipelineBucketTab>("triage");
-  const [communityTab, setCommunityTab] = useState<string>("none");
+  const [communityTab, setCommunityTab] = useState<string>("all");
   const [communityPiFilter, setCommunityPiFilter] = useState("");
-  const [communityRoster, setCommunityRoster] = useState<CommunityInvestigatorHit[]>([]);
-  const [communityRosterLoading, setCommunityRosterLoading] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const [fStrategic, setFStrategic] = useState<string>("all");
@@ -215,8 +143,8 @@ export function OpportunityPipelineListClient({
   const [fDeadlineTo, setFDeadlineTo] = useState("");
   const [fOverdue, setFOverdue] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  /** Board: at most one opportunity workflow (PI triage / communities) expanded at a time. */
-  const [expandedWorkflowOpportunityId, setExpandedWorkflowOpportunityId] = useState<string | null>(null);
+  /** Monitor: at most one PI workflow panel expanded at a time. Triage workflow is always visible on cards. */
+  const [expandedMonitorOpportunityId, setExpandedMonitorOpportunityId] = useState<string | null>(null);
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
@@ -241,35 +169,9 @@ export function OpportunityPipelineListClient({
 
   useEffect(() => {
     if (!isPipelineCommunityFilterTab(communityTab)) {
-      setCommunityRoster([]);
       setCommunityPiFilter("");
-      setCommunityRosterLoading(false);
-      return;
     }
-    setCommunityPiFilter("");
-    let cancelled = false;
-    setCommunityRosterLoading(true);
-    void (async () => {
-      try {
-        const r = await fetch(`/api/investigators/search?communityId=${encodeURIComponent(communityTab)}`);
-        const j = (await r.json()) as { results?: CommunityInvestigatorHit[]; error?: string };
-        if (!cancelled) setCommunityRoster(j.error ? [] : j.results ?? []);
-      } catch {
-        if (!cancelled) setCommunityRoster([]);
-      } finally {
-        if (!cancelled) setCommunityRosterLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, [communityTab]);
-
-  const filteredCommunityRoster = useMemo(() => {
-    const q = communityPiFilter.trim().toLowerCase();
-    if (!q) return communityRoster;
-    return communityRoster.filter((x) => (x.full_name ?? "").toLowerCase().includes(q));
-  }, [communityRoster, communityPiFilter]);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -279,7 +181,6 @@ export function OpportunityPipelineListClient({
 
   /** First metrics tile: community / untagged context (stable across Triage · Monitor · Cold · Archived). */
   const metricsAnchorLabel = useMemo(() => {
-    if (communityTab === "none") return "Untagged";
     if (communityTab === "all") return "All communities";
     const c = communities.find((x) => x.id === communityTab);
     if (c) return c.label;
@@ -287,7 +188,6 @@ export function OpportunityPipelineListClient({
   }, [communityTab, communities, bucketTab]);
 
   const metricsAnchorEyebrow = useMemo(() => {
-    if (communityTab === "none") return "Without community tags";
     if (communityTab === "all") return "Communities";
     if (isPipelineCommunityFilterTab(communityTab)) return "Research community";
     return "Pipeline";
@@ -314,11 +214,7 @@ export function OpportunityPipelineListClient({
    */
   const communityAndRefineCohort = useMemo(() => {
     let list = items;
-    if (communityTab === "none") {
-      list = items.filter((r) => r.communities.length === 0);
-    } else if (communityTab === "all") {
-      list = items.filter((r) => r.communities.length > 0);
-    } else if (isPipelineCommunityFilterTab(communityTab)) {
+    if (isPipelineCommunityFilterTab(communityTab)) {
       list = items.filter((r) => r.communities.some((c) => c.id === communityTab));
     }
     return list.filter((row) => passesRefineFilters(row, refineFilterArgs));
@@ -326,20 +222,15 @@ export function OpportunityPipelineListClient({
 
   const filtered = useMemo(() => {
     let list = byBucket;
-    if (bucketTab === "triage" && communityTab !== "all") {
-      if (communityTab === "none") {
-        list = list.filter((r) => r.communities.length === 0);
-      } else {
-        list = list.filter((r) => r.communities.some((c) => c.id === communityTab));
-      }
+    if (bucketTab === "triage" && isPipelineCommunityFilterTab(communityTab)) {
+      list = list.filter((r) => r.communities.some((c) => c.id === communityTab));
     }
     return list.filter((row) => passesRefineFilters(row, refineFilterArgs));
   }, [byBucket, bucketTab, communityTab, refineFilterArgs]);
 
-  /** Context summary metrics: Untagged shows only a total + dash placeholders; named community / All use full overlap counts on the cohort above. */
+  /** Context summary metrics for the current community slice. */
   const contextMetrics = useMemo(() => {
     const cohort = communityAndRefineCohort;
-    const secondaryNa = communityTab === "none";
     const sliceTotal = cohort.length;
     let piLinked = 0;
     let interested = 0;
@@ -356,21 +247,21 @@ export function OpportunityPipelineListClient({
         contacted++;
       }
     }
-    return { sliceTotal, piLinked, contacted, interested, assigned, overdue, secondaryNa };
-  }, [communityAndRefineCohort, communityTab, today]);
+    return { sliceTotal, piLinked, contacted, interested, assigned, overdue };
+  }, [communityAndRefineCohort, today]);
 
   useEffect(() => {
-    setExpandedWorkflowOpportunityId(null);
+    setExpandedMonitorOpportunityId(null);
   }, [bucketTab, communityTab]);
 
   useEffect(() => {
     if (
-      expandedWorkflowOpportunityId &&
-      !filtered.some((r) => r.opportunity_id === expandedWorkflowOpportunityId)
+      expandedMonitorOpportunityId &&
+      !filtered.some((r) => r.opportunity_id === expandedMonitorOpportunityId)
     ) {
-      setExpandedWorkflowOpportunityId(null);
+      setExpandedMonitorOpportunityId(null);
     }
-  }, [filtered, expandedWorkflowOpportunityId]);
+  }, [filtered, expandedMonitorOpportunityId]);
 
   useEffect(() => {
     if (bucketTab !== "monitor") return;
@@ -388,12 +279,10 @@ export function OpportunityPipelineListClient({
     const tri = items.filter((i) => i.stage === "triage").length;
     const mon = items.filter((i) => i.stage === "monitor").length;
     const parts = [`${items.length} saved total`, `${tri} in Triage`, `${mon} in Monitor`];
-    if (!contextMetrics.secondaryNa) {
-      if (contextMetrics.overdue > 0) parts.push(`${contextMetrics.overdue} overdue in context slice`);
-      if (contextMetrics.interested > 0) parts.push(`${contextMetrics.interested} with interested PI in context slice`);
-    }
+    if (contextMetrics.overdue > 0) parts.push(`${contextMetrics.overdue} overdue in context slice`);
+    if (contextMetrics.interested > 0) parts.push(`${contextMetrics.interested} with interested PI in context slice`);
     return parts.join(" · ");
-  }, [items, contextMetrics.interested, contextMetrics.overdue, contextMetrics.secondaryNa]);
+  }, [items, contextMetrics.interested, contextMetrics.overdue]);
 
   function setStage(oppId: string, stage: PipelineStage) {
     startTransition(async () => {
@@ -415,18 +304,15 @@ export function OpportunityPipelineListClient({
     });
   }
 
-  /** Clears assigned communities so the card returns to Untagged for a full re-tag pass. */
-  function sendToUntaggedForRetag(oppId: string) {
+  /** Clears assigned communities on a card so tags can be redone in place. */
+  function clearCommunityTags(oppId: string) {
     startTransition(async () => {
       const r = await setSavedOpportunityCommunitiesAction({
         opportunityId: oppId,
         communityIds: [],
       });
       if (!r.ok) window.alert(r.error);
-      else {
-        setCommunityTab("none");
-        router.refresh();
-      }
+      else router.refresh();
     });
   }
 
@@ -446,8 +332,7 @@ export function OpportunityPipelineListClient({
           ? "Cold"
           : "Archived";
 
-  /** Triage while a named community is selected: one column of cards + aside for future AI suggestions. */
-  const triageCommunityPiMode = bucketTab === "triage" && isPipelineCommunityFilterTab(communityTab);
+  const triageListLayout = bucketTab === "triage";
 
   return (
     <div className="mx-auto w-full max-w-[min(88rem,calc(100vw-1.5rem))] space-y-8 px-3 pb-24 text-[var(--fo-title)] sm:px-5 lg:px-8">
@@ -490,8 +375,8 @@ export function OpportunityPipelineListClient({
               anchorEyebrow={metricsAnchorEyebrow}
               anchorLabel={metricsAnchorLabel}
               anchorFootnote={
-                communityTab === "none"
-                  ? "Notices without a research community tag (refine filters)"
+                communityTab === "all"
+                  ? "All saved notices in this pipeline stage (refine filters)"
                   : "All pipeline stages · refine filters"
               }
               sliceTotal={contextMetrics.sliceTotal}
@@ -500,13 +385,10 @@ export function OpportunityPipelineListClient({
               interested={contextMetrics.interested}
               assigned={contextMetrics.assigned}
               overdue={contextMetrics.overdue}
-              secondaryDisplay={contextMetrics.secondaryNa ? "na" : "numbers"}
               summaryHint={
-                communityTab === "none"
-                  ? undefined
-                  : communityTab === "all"
-                    ? "Every notice with at least one research community tag — same cohort across Triage, Monitor, Cold, and Archived (refine filters apply). Counts overlap."
-                    : `Same "${metricsAnchorLabel}" cohort across Triage, Monitor, Cold, and Archived (refine filters apply). Counts overlap — one opportunity can be PI linked, contacted, assigned, and overdue at the same time.`
+                communityTab === "all"
+                  ? "Every notice in Triage, Monitor, Cold, and Archived — same cohort across stages (refine filters apply). Counts overlap."
+                  : `Same "${metricsAnchorLabel}" cohort across Triage, Monitor, Cold, and Archived (refine filters apply). Counts overlap — one opportunity can be PI linked, contacted, assigned, and overdue at the same time.`
               }
             />
             <PipelineListNextActionsCard
@@ -568,17 +450,20 @@ export function OpportunityPipelineListClient({
               <p className="mt-1 max-w-3xl text-sm font-medium leading-snug text-[var(--fo-ink-body)]">
                 {isPipelineCommunityFilterTab(communityTab) ? (
                   <>
-                    Shortlisting in{" "}
+                    Narrowing to{" "}
                     <span className="font-semibold text-[var(--fo-title)]">
                       {communities.find((c) => c.id === communityTab)?.label ?? "this community"}
                     </span>
-                    . Switch to <span className="font-medium">Untagged</span> or <span className="font-medium">All</span> to
-                    tag which communities apply to each notice.
+                    . Switch to <span className="font-medium">All communities</span> to work through every notice on one
+                    card — tag communities, pick investigators, and draft outreach without leaving the grant.
                   </>
                 ) : (
                   <>
-                    Tag each card, then pick a community to open PI shortlists for that roster.{" "}
-                    <span className="text-[var(--fo-ink-muted)]">Untagged surfaces notices still missing tags.</span>
+                    Each card is a full triage workspace: tag communities, select investigators from those rosters, then
+                    generate and send outreach.{" "}
+                    <span className="text-[var(--fo-ink-muted)]">
+                      Use a community tab below to focus on one roster across cards.
+                    </span>
                   </>
                 )}
               </p>
@@ -588,13 +473,13 @@ export function OpportunityPipelineListClient({
             <button
               type="button"
               className={`min-h-[2.75rem] max-w-full rounded-xl px-4 py-2.5 text-left text-sm font-semibold leading-snug transition-all [overflow-wrap:anywhere] sm:min-h-0 sm:px-4 ${
-                communityTab === "none"
+                communityTab === "all"
                   ? "border-2 border-[var(--fo-interaction)] bg-[var(--fo-select-tint)] text-[var(--fo-title)] shadow-sm ring-1 ring-[color-mix(in_srgb,var(--fo-interaction)_14%,transparent)]"
                   : "border border-[var(--fo-border)] bg-[var(--fo-paper)] text-[var(--fo-ink-body)] hover:border-[var(--fo-line-hover)] hover:bg-[var(--fo-subpanel)]"
               }`}
-              onClick={() => setCommunityTab("none")}
+              onClick={() => setCommunityTab("all")}
             >
-              Untagged
+              All communities
             </button>
             {communities.map((c, i) => {
               const stripe = stripeForIndex(i);
@@ -612,36 +497,20 @@ export function OpportunityPipelineListClient({
                 </button>
               );
             })}
-            <button
-              type="button"
-              className={`min-h-[2.75rem] max-w-full rounded-xl px-4 py-2.5 text-left text-sm font-semibold leading-snug transition-all [overflow-wrap:anywhere] sm:min-h-0 sm:px-4 ${
-                communityTab === "all"
-                  ? "border-2 border-[var(--fo-interaction)] bg-[var(--fo-select-tint)] text-[var(--fo-title)] shadow-sm ring-1 ring-[color-mix(in_srgb,var(--fo-interaction)_14%,transparent)]"
-                  : "border border-[var(--fo-border)] bg-[var(--fo-paper)] text-[var(--fo-ink-body)] hover:border-[var(--fo-line-hover)] hover:bg-[var(--fo-subpanel)]"
-              }`}
-              onClick={() => setCommunityTab("all")}
-            >
-              All communities
-            </button>
           </div>
-          {isPipelineCommunityFilterTab(communityTab) ? (
-            <div className="mt-4 max-w-xl">
-              <label className="text-[0.7rem] font-bold uppercase tracking-wide text-[var(--fo-ink-muted)]">Filter roster names</label>
-              <input
-                type="search"
-                className="mt-1.5 w-full rounded-lg border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-2 text-sm text-[var(--fo-title)] shadow-sm placeholder:text-[var(--fo-ink-faint)] focus:border-[var(--fo-focus-border)] focus:outline-none focus:ring-2 focus:ring-[var(--fo-focus-ring)]"
-                placeholder="Narrows checklists on every card…"
-                value={communityPiFilter}
-                onChange={(e) => setCommunityPiFilter(e.target.value)}
-                aria-label="Filter investigators by name within the selected community"
-              />
-              <p className="mt-1.5 text-xs font-medium text-[var(--fo-ink-muted)]">
-                {communityRosterLoading
-                  ? "Loading directory…"
-                  : `${filteredCommunityRoster.length} shown · ${communityRoster.length} in community`}
-              </p>
-            </div>
-          ) : null}
+          <div className="mt-4 max-w-xl">
+            <label className="text-[0.7rem] font-bold uppercase tracking-wide text-[var(--fo-ink-muted)]">
+              Filter investigator names on cards
+            </label>
+            <input
+              type="search"
+              className="mt-1.5 w-full rounded-lg border border-[var(--fo-border)] bg-[var(--fo-paper)] px-3 py-2 text-sm text-[var(--fo-title)] shadow-sm placeholder:text-[var(--fo-ink-faint)] focus:border-[var(--fo-focus-border)] focus:outline-none focus:ring-2 focus:ring-[var(--fo-focus-ring)]"
+              placeholder="Narrows rosters on every expanded card…"
+              value={communityPiFilter}
+              onChange={(e) => setCommunityPiFilter(e.target.value)}
+              aria-label="Filter investigators by name on triage cards"
+            />
+          </div>
         </div>
       ) : null}
 
@@ -770,16 +639,14 @@ export function OpportunityPipelineListClient({
 
         <div
           className={
-            triageCommunityPiMode
-              ? "flex w-full min-w-0 flex-col gap-8 pb-4 lg:gap-10"
-              : bucketTab === "triage"
-                ? "w-full min-w-0 pb-2"
-                : "flex gap-3 overflow-x-auto pb-2"
+            triageListLayout
+              ? "w-full min-w-0 pb-2"
+              : "flex gap-3 overflow-x-auto pb-2"
           }
         >
           <div
             className={
-              triageCommunityPiMode || bucketTab === "triage"
+              triageListLayout
                 ? "min-w-0 w-full bg-[var(--fo-panel)]"
                 : "w-full min-w-[min(100%,22rem)] max-w-2xl shrink-0 bg-[var(--fo-panel)]"
             }
@@ -790,11 +657,7 @@ export function OpportunityPipelineListClient({
             </div>
             <ul
               className={`p-4 sm:p-6 ${
-                triageCommunityPiMode
-                  ? "space-y-5"
-                  : bucketTab === "triage"
-                    ? "grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 md:gap-6 lg:gap-8"
-                    : "space-y-4"
+                triageListLayout ? "space-y-5" : "space-y-4"
               }`}
             >
               {filtered.map((row) => {
@@ -820,46 +683,17 @@ export function OpportunityPipelineListClient({
                 const ownerShort = row.owner_id ? ownerLabel.get(row.owner_id) ?? null : null;
                 const triageSlot =
                   bucketTab === "triage" ? (
-                    isPipelineCommunityFilterTab(communityTab) ? (
-                      <div className="space-y-4">
-                        <div className="rounded-lg border border-[var(--fo-border)] bg-[var(--fo-inset)] px-3 py-2.5 sm:px-4">
-                          <p className="text-xs text-[var(--fo-ink-body)]">
-                            Need to retag communities for this opportunity?
-                          </p>
-                          <button
-                            type="button"
-                            className="mt-2 inline-flex items-center rounded-md border border-[var(--fo-border)] bg-[var(--fo-paper)] px-2.5 py-1 text-xs font-semibold text-[var(--fo-title)] shadow-sm transition hover:border-[var(--fo-border-strong)] hover:bg-[var(--fo-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fo-focus-ring)]"
-                            disabled={pending}
-                            onClick={() => sendToUntaggedForRetag(row.opportunity_id)}
-                          >
-                            Send to Untagged to re-tag
-                          </button>
-                        </div>
-                        <TriageCommunityPiPanel
-                          opportunityId={row.opportunity_id}
-                          communityLabel={communities.find((c) => c.id === communityTab)?.label ?? "Community"}
-                          roster={filteredCommunityRoster}
-                          rosterLoading={communityRosterLoading}
-                          matches={row.saved_opportunity_pi_matches ?? []}
-                          fundingOpportunity={fo}
-                          whyMatters={row.why_matters}
-                          internalNotes={row.internal_notes}
-                          disabled={pending}
-                          ownerLabel={ownerShort}
-                          stage={row.stage}
-                          opportunityCommunities={row.communities}
-                          hideHeader
-                        />
-                      </div>
-                    ) : (
-                      <TriageOpportunityCommunities
-                        opportunityId={row.opportunity_id}
-                        row={row}
-                        communities={communities}
-                        disabled={pending}
-                        onUpdated={() => router.refresh()}
-                      />
-                    )
+                    <TriageOpportunityWorkflow
+                      opportunityId={row.opportunity_id}
+                      row={row}
+                      communities={communities}
+                      fundingOpportunity={fo}
+                      disabled={pending}
+                      globalRosterFilter={communityPiFilter}
+                      ownerLabel={ownerShort}
+                      onCommunitiesUpdated={() => router.refresh()}
+                      onClearCommunities={() => clearCommunityTags(row.opportunity_id)}
+                    />
                   ) : null;
                 const monitorSlot =
                   bucketTab === "monitor" ? (
@@ -884,9 +718,9 @@ export function OpportunityPipelineListClient({
                     sendEmailsLabel="Send outreach & monitor"
                     triageSlot={triageSlot}
                     monitorSlot={monitorSlot}
-                    workflowExpanded={expandedWorkflowOpportunityId === row.opportunity_id}
+                    workflowExpanded={expandedMonitorOpportunityId === row.opportunity_id}
                     onWorkflowToggle={() =>
-                      setExpandedWorkflowOpportunityId((prev) =>
+                      setExpandedMonitorOpportunityId((prev) =>
                         prev === row.opportunity_id ? null : row.opportunity_id
                       )
                     }
@@ -899,26 +733,6 @@ export function OpportunityPipelineListClient({
               })}
             </ul>
           </div>
-          {triageCommunityPiMode ? (
-            <aside
-              className="min-w-0 rounded-xl border border-dashed border-[var(--fo-border)] bg-[color-mix(in_srgb,var(--fo-paper)_92%,var(--fo-inset))] px-5 py-4 sm:flex sm:items-start sm:gap-6 sm:px-7 sm:py-5"
-              aria-label="Suggested PI matches (coming soon)"
-            >
-              <div className="shrink-0 sm:pt-0.5">
-                <p className="text-sm font-semibold text-[var(--fo-title)]">Suggested matches</p>
-                <p className="mt-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-[var(--fo-ink-muted)]">Coming soon</p>
-              </div>
-              <div className="mt-3 min-w-0 sm:mt-0">
-                <p className="text-sm leading-relaxed text-[var(--fo-ink-body)]">
-                  Soon: an AI pass over this community&apos;s directory and the notice text to surface fit-ranked PIs beside
-                  your manual shortlist.
-                </p>
-                <p className="mt-2 text-xs text-[var(--fo-ink-muted)]">
-                  For now, use each card&apos;s checklist and the roster filter above.
-                </p>
-              </div>
-            </aside>
-          ) : null}
         </div>
       </section>
         </>

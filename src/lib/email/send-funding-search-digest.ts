@@ -22,9 +22,10 @@ export type FundingDigestLine = {
 };
 
 export async function sendFundingSearchDigestEmail(input: {
-  to: string;
+  to: string | string[];
   searchName: string;
   lines: FundingDigestLine[];
+  isTest?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const key = process.env.RESEND_API_KEY?.trim();
   const from = process.env.RESEND_FROM_EMAIL?.trim();
@@ -36,6 +37,16 @@ export async function sendFundingSearchDigestEmail(input: {
   const maxLines = 75;
   const slice = input.lines.slice(0, maxLines);
   const more = input.lines.length - slice.length;
+  const recipients = Array.from(
+    new Set(
+      (Array.isArray(input.to) ? input.to : [input.to])
+        .map((e) => e.trim())
+        .filter(Boolean)
+    )
+  );
+  if (recipients.length === 0) {
+    return { ok: false, error: "No recipient email addresses." };
+  }
 
   const itemsHtml = slice
     .map((l) => {
@@ -48,13 +59,26 @@ export async function sendFundingSearchDigestEmail(input: {
     })
     .join("");
 
+  const bodyIntro =
+    slice.length > 0
+      ? `<p style="font-size:15px;">New or updated <strong>posted</strong> or <strong>forecasted</strong> notices match your saved search <strong>${escapeHtml(input.searchName)}</strong>:</p>
+<ul style="padding-left:18px;margin:16px 0;">${itemsHtml}</ul>`
+      : `<p style="font-size:15px;">Your saved search <strong>${escapeHtml(input.searchName)}</strong> is set up for email alerts. There are no new matching notices in the last 72 hours right now — you will receive another message when matches appear.</p>`;
+
   const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a;">
-<p style="font-size:15px;">New or updated <strong>posted</strong> or <strong>forecasted</strong> notices match your saved search <strong>${escapeHtml(input.searchName)}</strong>:</p>
-<ul style="padding-left:18px;margin:16px 0;">${itemsHtml}</ul>
+${input.isTest ? `<p style="font-size:13px;color:#64748b;margin:0 0 12px 0;"><em>Test email — confirms delivery for this saved search.</em></p>` : ""}
+${bodyIntro}
 ${more > 0 ? `<p style="font-size:14px;color:#64748b;">And ${more} more — open <a href="${escapeHtml(`${origin}/funding-opportunities`)}">Search</a> with your saved filters.</p>` : ""}
-<p style="font-size:13px;color:#94a3b8;margin-top:24px;">You received this because email alerts are enabled for a saved search. Turn them off from Search → Refine → Saved searches.</p>
+<p style="font-size:13px;color:#94a3b8;margin-top:24px;">You received this because email alerts are enabled for a saved search. Turn them off from the Saved Searches menu on the funding list.</p>
 </body></html>`;
 
+  const subjectCount = slice.length > 0 ? slice.length : 0;
+  const subjectSuffix =
+    subjectCount > 0
+      ? `${subjectCount} new notice${subjectCount === 1 ? "" : "s"} — ${input.searchName}`
+      : `Alerts active — ${input.searchName}`;
+
+  const subjectPrefix = input.isTest ? "[Test] " : "";
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -63,8 +87,8 @@ ${more > 0 ? `<p style="font-size:14px;color:#64748b;">And ${more} more — open
     },
     body: JSON.stringify({
       from,
-      to: [input.to],
-      subject: `${slice.length} new notice${slice.length === 1 ? "" : "s"} — ${input.searchName}`,
+      to: recipients,
+      subject: `${subjectPrefix}${subjectSuffix}`,
       html,
     }),
   });

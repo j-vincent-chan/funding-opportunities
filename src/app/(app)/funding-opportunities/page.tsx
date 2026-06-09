@@ -47,7 +47,12 @@ import {
   type FundingListResultsRow,
 } from "@/components/funding/funding-list-results-table";
 import { normalizeAgencyDisplayName } from "@/lib/funding-opportunities/agency-display";
-import { parseSavedFundingListState } from "@/lib/funding-opportunities/saved-funding-list-state";
+import {
+  formatSavedSearchFilterSummary,
+  parseSavedFundingListState,
+} from "@/lib/funding-opportunities/saved-funding-list-state";
+import { fetchSavedFundingSearchesForUser } from "@/lib/funding-opportunities/saved-funding-search-query";
+import { fetchActiveRdsgOwnersForAlerts } from "@/lib/funding-opportunities/saved-search-alert-recipients";
 import { FundingSearchBookmarksRail } from "@/components/funding/funding-search-bookmarks-rail";
 import { type SavedSearchLink } from "@/components/funding/funding-saved-searches-strip";
 import { getSavedSearchMatchStats } from "@/lib/funding-opportunities/funding-search-notification-query";
@@ -352,17 +357,11 @@ export default async function FundingOpportunitiesPage({
 
   const matchedOppIdsOnPage = new Set<string>();
   const savedSearchLinks: SavedSearchLink[] = [];
+  let rdsgOwners: Awaited<ReturnType<typeof fetchActiveRdsgOwnersForAlerts>> = [];
   if (user) {
     const sliceIds = pageSlice.map((o) => o.id);
-    const [searchesRes, onPageRes, matchedOnPageRes] = await Promise.all([
-      supabase
-        .from("saved_funding_searches")
-        .select(
-          "id, name, state, created_at, updated_at, email_notifications_enabled, alert_frequency, alert_forecasted_notices, last_viewed_at, last_matched_at"
-        )
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(25),
+    const [searchesRes, onPageRes, matchedOnPageRes, rdsgOwnerRows] = await Promise.all([
+      fetchSavedFundingSearchesForUser(supabase, user.id, 25),
       sliceIds.length > 0
         ? supabase
             .from("saved_funding_opportunities")
@@ -377,9 +376,12 @@ export default async function FundingOpportunitiesPage({
             .eq("user_id", user.id)
             .in("opportunity_id", sliceIds)
         : Promise.resolve({ data: [] as { opportunity_id: string }[], error: null }),
+      fetchActiveRdsgOwnersForAlerts(supabase),
     ]);
 
-    const searchRows = searchesRes.data ?? [];
+    rdsgOwners = rdsgOwnerRows;
+
+    const searchRows = searchesRes.rows;
     const matchStats = await Promise.all(
       searchRows.map(async (row) => {
         const r = row as {
@@ -407,6 +409,7 @@ export default async function FundingOpportunitiesPage({
         email_notifications_enabled?: boolean | null;
         alert_frequency?: string | null;
         alert_forecasted_notices?: boolean | null;
+        alert_rdsg_owner_ids?: string[] | null;
         last_viewed_at?: string | null;
         last_matched_at?: string | null;
       };
@@ -420,9 +423,11 @@ export default async function FundingOpportunitiesPage({
         id: r.id,
         name: String(r.name ?? "Saved search"),
         href: st ? fundingListHref(st) : "/funding-opportunities",
+        filterSummary: st ? formatSavedSearchFilterSummary(st) : "All opportunities",
         emailNotificationsEnabled: Boolean(r.email_notifications_enabled),
         alertFrequency: frequency,
         alertForecastedNotices: r.alert_forecasted_notices !== false,
+        alertRdsgOwnerIds: Array.isArray(r.alert_rdsg_owner_ids) ? r.alert_rdsg_owner_ids : [],
         createdAt: (row as { created_at?: string | null }).created_at ?? null,
         updatedAt: (row as { updated_at?: string | null }).updated_at ?? null,
         lastViewedAt: r.last_viewed_at ?? null,
@@ -529,11 +534,10 @@ export default async function FundingOpportunitiesPage({
             Prospera
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--fo-title)] sm:text-4xl lg:text-[2.5rem] lg:leading-tight">
-            Funding intelligence workspace
+            Funding Opportunities
           </h1>
           <p className="mt-3 max-w-xl text-sm font-medium leading-relaxed text-[var(--fo-ink-body)] sm:text-base">
-            Discover → Narrow → Ask → Save → Act. Search notices, interpret fit with Prospera, and move quickly to
-            action.
+            Search, filter, and track grants matched to your research
           </p>
         </header>
 
@@ -581,8 +585,8 @@ export default async function FundingOpportunitiesPage({
             {error ? (
               <p className="text-sm text-red-700/90">{error.message}</p>
             ) : (
-              <section className="fo-panel overflow-hidden">
-                <div className="border-b border-[var(--fo-border)] bg-[var(--fo-paper)] px-5 py-3 sm:px-6">
+              <section className="fo-panel">
+                <div className="overflow-hidden rounded-t-[var(--fo-radius-lg)] border-b border-[var(--fo-border)] bg-[var(--fo-paper)] px-5 py-3 sm:px-6">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-base font-bold tracking-tight text-[var(--fo-title)]">
                       Results{" "}
@@ -603,11 +607,12 @@ export default async function FundingOpportunitiesPage({
                     counts={quickFilterCounts}
                     savedSearches={savedSearchLinks}
                     showSavedSearches={!!user}
+                    rdsgOwners={rdsgOwners}
                   />
                 </Suspense>
 
                 {totalFiltered === 0 ? (
-                  <div className="px-5 py-8">
+                  <div className="overflow-hidden rounded-b-[var(--fo-radius-lg)] px-5 py-8">
                     <EmptyState
                       title="No funding opportunities"
                       className="rounded-xl border border-dashed border-[var(--fo-border)] bg-[var(--fo-paper)]"
@@ -621,7 +626,7 @@ export default async function FundingOpportunitiesPage({
                     />
                   </div>
                 ) : (
-                  <>
+                  <div className="overflow-hidden rounded-b-[var(--fo-radius-lg)]">
                 <FundingListResultsTable
                   rows={resultsTableRows}
                   loggedIn={!!user}
@@ -635,7 +640,7 @@ export default async function FundingOpportunitiesPage({
                   perPage={perPage}
                   editorial
                 />
-                  </>
+                  </div>
                 )}
               </section>
             )}

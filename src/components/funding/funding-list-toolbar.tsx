@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FundingQuickFiltersBar,
@@ -18,16 +18,19 @@ import {
   urlSearchParamsToRecord,
 } from "@/lib/funding-opportunities/funding-list-url";
 import { fundingListStateForBookmark } from "@/lib/funding-opportunities/saved-funding-list-state";
+import type { RdsgOwnerRecipient } from "@/lib/funding-opportunities/saved-search-alert-recipients";
 import { useSearchParams } from "next/navigation";
 
 export function FundingListToolbar({
   counts,
   savedSearches,
   showSavedSearches,
+  rdsgOwners,
 }: {
   counts: FundingQuickFiltersCounts;
   savedSearches: SavedSearchLink[];
   showSavedSearches: boolean;
+  rdsgOwners: RdsgOwnerRecipient[];
 }) {
   const sp = useSearchParams();
   const router = useRouter();
@@ -38,10 +41,18 @@ export function FundingListToolbar({
   }, [sp]);
 
   const activeSearch = useActiveSavedSearch(savedSearches, currentState);
+  const [openFlyoutId, setOpenFlyoutId] = useState<string | null>(null);
+  const [loadedSavedSearchId, setLoadedSavedSearchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeSearch) {
+      setLoadedSavedSearchId(activeSearch.id);
+    }
+  }, [activeSearch]);
 
   return (
-    <div className="border-b border-[var(--fo-divider)] bg-[var(--fo-paper-2)]">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-3 sm:px-6">
+    <div className="relative z-20 border-b border-[var(--fo-divider)] bg-[var(--fo-paper-2)]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 overflow-visible px-5 py-3 sm:px-6">
         <FundingQuickFiltersBar counts={counts} variant="embedded" />
         {showSavedSearches ? (
           <>
@@ -49,14 +60,26 @@ export function FundingListToolbar({
               className="hidden h-7 w-px shrink-0 bg-[var(--fo-border)] md:block"
               aria-hidden
             />
-            <FundingSavedSearchesStrip savedSearches={savedSearches} />
+            <FundingSavedSearchesStrip
+              savedSearches={savedSearches}
+              rdsgOwners={rdsgOwners}
+              currentState={currentState}
+              openFlyoutId={openFlyoutId}
+              setOpenFlyoutId={setOpenFlyoutId}
+              loadedSavedSearchId={loadedSavedSearchId}
+              setLoadedSavedSearchId={setLoadedSavedSearchId}
+            />
           </>
         ) : null}
       </div>
       {activeSearch ? (
         <FundingSavedSearchContextBar
           search={activeSearch}
-          onClear={() => router.push(fundingListDefaultHref())}
+          onEdit={() => setOpenFlyoutId(activeSearch.id)}
+          onClear={() => {
+            setLoadedSavedSearchId(null);
+            router.push(fundingListDefaultHref());
+          }}
         />
       ) : null}
     </div>

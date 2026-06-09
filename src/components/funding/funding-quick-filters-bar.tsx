@@ -286,7 +286,7 @@ export function FundingQuickFiltersBar({
 
   const shellClass =
     variant === "embedded"
-      ? "min-w-0 flex-1"
+      ? "min-w-0"
       : "border-y border-[var(--fo-divider)] bg-[var(--fo-paper-2)] px-5 py-3 sm:px-6";
 
   return (

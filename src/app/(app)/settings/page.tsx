@@ -1,6 +1,10 @@
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { SeedAiDocumentsCard } from "@/components/portfolio-intelligence/seed-ai-documents-card";
+import {
+  RdsgOwnersSettingsCard,
+  type RdsgOwnerSettingsRow,
+} from "@/components/settings/rdsg-owners-settings-card";
 
 export default async function SettingsPage() {
   const supabase = createClient();
@@ -13,6 +17,32 @@ export default async function SettingsPage() {
     .select("full_name, email, role")
     .eq("id", user?.id ?? "")
     .maybeSingle();
+
+  const isAdmin = profile?.role === "admin";
+
+  let rdsgOwners: RdsgOwnerSettingsRow[] = [];
+  if (isAdmin) {
+    const { data } = await supabase
+      .from("rdsg_owners")
+      .select("id, full_name, email, is_active")
+      .order("full_name", { ascending: true })
+      .limit(300);
+
+    rdsgOwners = (data ?? []).map((row) => {
+      const r = row as {
+        id: string;
+        full_name: string;
+        email: string | null;
+        is_active: boolean;
+      };
+      return {
+        id: r.id,
+        fullName: String(r.full_name ?? "").trim(),
+        email: r.email?.trim() || null,
+        isActive: r.is_active !== false,
+      };
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -41,7 +71,8 @@ export default async function SettingsPage() {
         </CardBody>
       </Card>
 
-      {profile?.role === "admin" ? <SeedAiDocumentsCard /> : null}
+      {isAdmin ? <RdsgOwnersSettingsCard owners={rdsgOwners} /> : null}
+      {isAdmin ? <SeedAiDocumentsCard /> : null}
     </div>
   );
 }

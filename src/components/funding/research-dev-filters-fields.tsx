@@ -212,18 +212,26 @@ export function ResearchDevFiltersFields({
           {TOP_LEVEL_DEPARTMENTS.map((d) => {
             const subs = getSubcomponentsForDepartment(d.id);
             const selected = departmentSubs[d.id] ?? [];
+            const deptSelected = noDepartmentFilter || departments.includes(d.id);
+            const isSubChecked = (subId: string) => {
+              if (noDepartmentFilter) return true;
+              if (!deptSelected) return false;
+              if (subs.length === 0) return false;
+              if (selected.length === 0) return true;
+              return selected.includes(subId);
+            };
             return (
               <div key={d.id} className="space-y-1">
                 <label className={rowLab}>
                   <input
                     type="checkbox"
-                    checked={departments.includes(d.id)}
+                    checked={deptSelected}
                     onChange={(e) => toggleDepartment(d.id, e.target.checked)}
                     className="shrink-0"
                   />
                   <span className="leading-snug">{d.label}</span>
                 </label>
-                {subs.length > 0 && departments.includes(d.id) ? (
+                {subs.length > 0 && deptSelected ? (
                   <div
                     className={
                       editorial
@@ -239,7 +247,7 @@ export function ResearchDevFiltersFields({
                         <label key={c.id} className={rowLab}>
                           <input
                             type="checkbox"
-                            checked={selected.includes(c.id)}
+                            checked={isSubChecked(c.id)}
                             onChange={(e) => toggleDepartmentSub(d.id, c.id, e.target.checked)}
                             className="shrink-0"
                           />

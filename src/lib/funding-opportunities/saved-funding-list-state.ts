@@ -1,8 +1,12 @@
 import { z } from "zod";
+import { TOP_LEVEL_DEPARTMENTS } from "@/lib/funding-opportunities/agency-taxonomy";
 import {
   DEFAULT_FUNDING_LIST_PER_PAGE,
   DEFAULT_FUNDING_LIST_PAGE,
   FUNDING_LIST_PAGE_SIZES,
+  fundingListHref,
+  searchParamsToFundingListState,
+  urlSearchParamsToRecord,
   type FundingListClientState,
   type FundingListPageSize,
   type FundingListScope,
@@ -104,6 +108,7 @@ const fundingListClientStateSchema = z
     departments: z.array(z.string()).catch([]),
     departmentSubs: departmentSubsSchema,
     legacyAgencies: z.array(z.string()).catch([]),
+    allDepartments: z.boolean().optional(),
     rd: z.unknown().transform((raw) => rdListFilterStateSchema.parse(raw)),
   })
   .partial()
@@ -128,6 +133,7 @@ const fundingListClientStateSchema = z
       departments: partial.departments ?? [],
       departmentSubs: partial.departmentSubs ?? {},
       legacyAgencies: partial.legacyAgencies ?? [],
+      allDepartments: partial.allDepartments,
       rd,
     } satisfies FundingListClientState;
   });
@@ -144,4 +150,149 @@ export function fundingListStateForBookmark(state: FundingListClientState): Fund
     ...state,
     page: DEFAULT_FUNDING_LIST_PAGE,
   };
+}
+
+const TAB_LABELS: Partial<Record<FundingListViewTab, string>> = {
+  recommended: "Matched to me",
+  closing_soon: "Closing soon",
+  new_this_week: "New this week",
+  large_awards: "Large awards",
+  esi_career: "ESI career",
+  investigator_initiated: "Investigator-initiated",
+  foundations: "Foundations",
+  saved: "Bookmarked",
+  immunology_translational: "Immunology translational",
+};
+
+/** Default chip name when saving the current list filters. */
+export function suggestSavedSearchName(state: FundingListClientState): string {
+  if (state.q.trim()) {
+    return state.q.trim().slice(0, 72);
+  }
+  const parts: string[] = [];
+  if (state.tab && state.tab !== "all") {
+    parts.push(TAB_LABELS[state.tab] ?? state.tab);
+  }
+  if (state.departments.includes("hhs") && (state.departmentSubs.hhs ?? []).includes("nih")) {
+    parts.push("NIH");
+  } else if (state.departments.length > 0) {
+    parts.push(state.departments.map((d) => d.toUpperCase()).join(", "));
+  }
+  if (state.scope === "open") parts.push("Open only");
+  else if (state.scope === "forecasted") parts.push("Forecasted only");
+  else if (state.scope === "closed") parts.push("Closed");
+  return parts.length > 0 ? parts.join(" · ") : "My funding search";
+}
+
+const SCOPE_LABELS: Record<FundingListScope, string> = {
+  all: "Open & forecasted",
+  any: "All statuses",
+  open: "Open only",
+  forecasted: "Forecasted only",
+  closed: "Closed",
+};
+
+const SUB_SHORT_LABELS: Record<string, string> = {
+  nih: "NIH",
+  cdc: "CDC",
+  fda: "FDA",
+  cms: "CMS",
+  hrsa: "HRSA",
+  samhsa: "SAMHSA",
+  ahrq: "AHRQ",
+  ihs: "IHS",
+  acl: "ACL",
+  aspe: "ASPE",
+};
+
+function departmentFilterSummary(state: FundingListClientState): string | null {
+  if (
+    state.allDepartments &&
+    state.departments.length === 0 &&
+    Object.keys(state.departmentSubs).length === 0 &&
+    state.legacyAgencies.length === 0
+  ) {
+    return "All departments";
+  }
+
+  const deptParts: string[] = [];
+  for (const deptId of state.departments) {
+    const subs = state.departmentSubs[deptId] ?? [];
+    if (subs.length === 0) {
+      const dept = TOP_LEVEL_DEPARTMENTS.find((d) => d.id === deptId);
+      deptParts.push(dept?.label.split(" ").slice(-1)[0] ?? deptId.toUpperCase());
+      continue;
+    }
+    if (deptId === "hhs" && subs.length === 1 && subs[0] === "nih") {
+      deptParts.push("NIH");
+      continue;
+    }
+    for (const subId of subs) {
+      deptParts.push(SUB_SHORT_LABELS[subId] ?? subId.toUpperCase());
+    }
+  }
+
+  if (deptParts.length === 0 && state.legacyAgencies.length > 0) {
+    return state.legacyAgencies.join(", ");
+  }
+
+  return deptParts.length > 0 ? deptParts.join(", ") : null;
+}
+
+/** Human-readable filter line for saved-search flyouts. */
+export function formatSavedSearchFilterSummary(state: FundingListClientState): string {
+  const parts: string[] = [];
+
+  const dept = departmentFilterSummary(state);
+  if (dept) parts.push(dept);
+
+  parts.push(SCOPE_LABELS[state.scope] ?? SCOPE_LABELS.all);
+
+  if (state.tab && state.tab !== "all") {
+    parts.push(TAB_LABELS[state.tab] ?? state.tab);
+  }
+
+  if (state.rd.activityFamilies.length > 0) {
+    parts.push(...state.rd.activityFamilies);
+  }
+
+  if (state.rd.nihIc.length > 0) {
+    parts.push(...state.rd.nihIc);
+  }
+
+  if (state.q.trim()) {
+    parts.push(`Keyword: ${state.q.trim()}`);
+  }
+
+  if (state.sort !== "posted_date" || state.order !== "desc") {
+    const sortLabels: Record<string, string> = {
+      title: "Title",
+      agency: "Agency",
+      status: "Status",
+      posted_date: "Posted date",
+      close_date: "Close date",
+      funding_instrument: "Instrument",
+    };
+    const sortLabel = sortLabels[state.sort] ?? state.sort;
+    parts.push(`Sort: ${sortLabel} ${state.order === "asc" ? "↑" : "↓"}`);
+  }
+
+  if (state.perPage !== DEFAULT_FUNDING_LIST_PER_PAGE) {
+    parts.push(`${state.perPage} per page`);
+  }
+
+  return parts.join(" · ");
+}
+
+/** True when the current list URL matches a saved search link. */
+export function savedSearchMatchesCurrentState(
+  current: FundingListClientState,
+  savedHref: string
+): boolean {
+  const queryString = savedHref.includes("?") ? (savedHref.split("?")[1] ?? "") : "";
+  const savedState = fundingListStateForBookmark(
+    searchParamsToFundingListState(urlSearchParamsToRecord(new URLSearchParams(queryString)))
+  );
+  const bookmarked = fundingListStateForBookmark(current);
+  return fundingListHref(savedState) === fundingListHref(bookmarked);
 }

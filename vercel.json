@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sync-funding-opportunities",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/funding-search-notifications",
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -44,7 +44,7 @@ export function PipelineOpportunityBoardCard({
   ownerLabel,
   triageSlot,
   monitorSlot = null,
-  workflowExpanded,
+  workflowExpanded = false,
   onWorkflowToggle,
   onSendEmails,
   onMoveMonitor,
@@ -60,10 +60,10 @@ export function PipelineOpportunityBoardCard({
   statusLine: string;
   ownerLabel: string | null;
   triageSlot: ReactNode;
-  /** Expanded workflow for Monitor bucket (PI response + owner). */
+  /** Expanded workflow for Monitor bucket (PI response + owner). Triage workflow is always visible. */
   monitorSlot?: ReactNode | null;
-  workflowExpanded: boolean;
-  onWorkflowToggle: () => void;
+  workflowExpanded?: boolean;
+  onWorkflowToggle?: () => void;
   onSendEmails: () => void;
   onMoveMonitor: () => void;
   onStageChange: (stage: PipelineStage) => void;
@@ -74,7 +74,8 @@ export function PipelineOpportunityBoardCard({
   const pi = piPortfolioSummary(matches);
   const agency = (fo?.agency ?? "").trim() || "—";
   const instrument = (fo?.funding_instrument ?? "").trim();
-  const canExpandWorkflow = Boolean(triageSlot || monitorSlot);
+  const triageWorkflowAlwaysOpen = bucketTab === "triage" && Boolean(triageSlot);
+  const canExpandMonitorWorkflow = Boolean(monitorSlot) && bucketTab === "monitor";
 
   /** True for real controls — not the expandable region wrapper (previously role=button matched every click). */
   function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -87,7 +88,7 @@ export function PipelineOpportunityBoardCard({
   }
 
   function toggleWorkflowFromCard() {
-    if (!canExpandWorkflow) return;
+    if (!canExpandMonitorWorkflow || !onWorkflowToggle) return;
     onWorkflowToggle();
   }
 
@@ -117,14 +118,14 @@ export function PipelineOpportunityBoardCard({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             className={`flex min-h-0 flex-1 flex-col rounded-tr-2xl transition-colors duration-150 ${
-              canExpandWorkflow
+              canExpandMonitorWorkflow
                 ? "cursor-pointer hover:bg-[color-mix(in_srgb,var(--fo-inset)_88%,var(--fo-paper))] focus-within:bg-[color-mix(in_srgb,var(--fo-inset)_94%,var(--fo-paper))] focus-visible:bg-[color-mix(in_srgb,var(--fo-inset)_94%,var(--fo-paper))]"
                 : ""
             }`}
-            role={canExpandWorkflow ? "group" : undefined}
-            tabIndex={canExpandWorkflow ? 0 : undefined}
+            role={canExpandMonitorWorkflow ? "group" : undefined}
+            tabIndex={canExpandMonitorWorkflow ? 0 : undefined}
             aria-label={
-              canExpandWorkflow
+              canExpandMonitorWorkflow
                 ? `Opportunity summary — click empty space or press Enter to ${workflowExpanded ? "collapse" : "expand"} PI workflow`
                 : undefined
             }
@@ -152,7 +153,7 @@ export function PipelineOpportunityBoardCard({
                 <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.6875rem] font-semibold tabular-nums ${urgency.badgeClass}`}>
                   {urgency.badge}
                 </span>
-                {triageSlot || monitorSlot ? (
+                {canExpandMonitorWorkflow ? (
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 rounded-lg border border-[var(--fo-border)] bg-[var(--fo-paper)] px-2 py-1 text-xs font-semibold text-[var(--fo-ink-body)] shadow-sm transition hover:border-[var(--fo-border-strong)] hover:bg-[var(--fo-row-hover)] hover:text-[var(--fo-title)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--fo-focus-ring)]"
@@ -231,7 +232,7 @@ export function PipelineOpportunityBoardCard({
               </p>
             ) : null}
 
-            {triageSlot && workflowExpanded ? (
+            {triageWorkflowAlwaysOpen ? (
               <div
                 className="mt-6 min-h-0 shrink-0 border-t border-[var(--fo-divider)] pt-5 sm:mt-8 sm:pt-6"
                 onClick={(e) => e.stopPropagation()}

@@ -5,7 +5,10 @@ import { PageLoadingState } from "@/components/ui/page-loading-state";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CardBody, CardHeader } from "@/components/ui/card";
 import { ResearchDevFiltersFields } from "@/components/funding/research-dev-filters-fields";
-import { useFundingListNavigate } from "@/components/funding/use-funding-list-navigate";
+import {
+  useFundingListFilterState,
+  useFundingListNavigate,
+} from "@/components/funding/use-funding-list-navigate";
 import {
   DEFAULT_FUNDING_LIST_PAGE,
   defaultFundingListClientState,
@@ -20,22 +23,59 @@ import {
 } from "@/lib/funding-opportunities/funding-list-url";
 import type { RdListFilterState } from "@/lib/funding-opportunities/rd-list-filters";
 
+function isNoDepartmentFilter(state: FundingListClientState): boolean {
+  return (
+    state.departments.length === 0 &&
+    isDepartmentSubsEmpty(state.departmentSubs) &&
+    state.legacyAgencies.length === 0
+  );
+}
+
+function allDepartmentsSelectionExcept(
+  excludeDeptId?: string,
+  excludeSub?: { deptId: string; subId: string }
+): Pick<FundingListClientState, "departments" | "departmentSubs"> {
+  const departments: string[] = [];
+  const departmentSubs: DepartmentSubsSelection = {};
+
+  for (const dept of TOP_LEVEL_DEPARTMENTS) {
+    if (excludeDeptId && dept.id === excludeDeptId) continue;
+    departments.push(dept.id);
+    const subs = getSubcomponentsForDepartment(dept.id);
+    if (subs.length === 0) continue;
+
+    let subIds = subs.map((sub) => sub.id);
+    if (excludeSub && excludeSub.deptId === dept.id) {
+      subIds = subIds.filter((id) => id !== excludeSub.subId);
+    }
+    if (subIds.length > 0) {
+      departmentSubs[dept.id] = subIds;
+    }
+  }
+
+  return { departments, departmentSubs };
+}
+import type { DepartmentSubsSelection } from "@/lib/funding-opportunities/agency-filter";
+import { TOP_LEVEL_DEPARTMENTS } from "@/lib/funding-opportunities/agency-taxonomy";
+import { getSubcomponentsForDepartment } from "@/lib/funding-opportunities/department-subcomponents";
+
 function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editorial?: boolean }) {
   const sp = useSearchParams();
   const router = useRouter();
-  const { navigate, isPending } = useFundingListNavigate();
+  const { state, commitFilter, isPending } = useFundingListFilterState();
+  const { navigate } = useFundingListNavigate();
 
   const record = useMemo(() => urlSearchParamsToRecord(new URLSearchParams(sp.toString())), [sp]);
-  const state = useMemo(() => searchParamsToFundingListState(record), [record]);
+  const urlState = useMemo(() => searchParamsToFundingListState(record), [record]);
 
   useEffect(() => {
     if (urlHasAgencyFilterParams(record)) return;
 
     const hasDept =
-      state.departments.length > 0 ||
-      !isDepartmentSubsEmpty(state.departmentSubs) ||
-      state.legacyAgencies.length > 0;
-    if (hasDept || state.allDepartments) return;
+      urlState.departments.length > 0 ||
+      !isDepartmentSubsEmpty(urlState.departmentSubs) ||
+      urlState.legacyAgencies.length > 0;
+    if (hasDept || urlState.allDepartments) return;
 
     const defaults = defaultFundingListClientState();
     const patch: Partial<FundingListClientState> = {
@@ -50,7 +90,14 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
       patch.order = defaults.order;
     }
     navigate(patch);
-  }, [navigate, record, state.allDepartments, state.departments, state.departmentSubs, state.legacyAgencies]);
+  }, [
+    navigate,
+    record,
+    urlState.allDepartments,
+    urlState.departments,
+    urlState.departmentSubs,
+    urlState.legacyAgencies,
+  ]);
 
   const resetToDefaults = useCallback(() => {
     router.replace(fundingListDefaultHref(), { scroll: false });
@@ -58,18 +105,16 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
 
   const patchRd = useCallback(
     (fn: (prev: RdListFilterState) => RdListFilterState) => {
-      const params = new URLSearchParams(window.location.search.slice(1));
-      const base = searchParamsToFundingListState(urlSearchParamsToRecord(params));
-      const nextRd = fn(base.rd);
+      const nextRd = fn(state.rd);
       const patch: Partial<FundingListClientState> = {
         rd: nextRd,
         page: DEFAULT_FUNDING_LIST_PAGE,
       };
       if (nextRd.nihIc.length > 0) {
-        const depts = new Set(base.departments);
+        const depts = new Set(state.departments);
         depts.add("hhs");
         patch.departments = Array.from(depts);
-        const nextSubs = { ...base.departmentSubs };
+        const nextSubs = { ...state.departmentSubs };
         const hhs = new Set(nextSubs.hhs ?? []);
         hhs.add("nih");
         nextSubs.hhs = Array.from(hhs);
@@ -77,23 +122,38 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         patch.legacyAgencies = [];
         patch.allDepartments = false;
       }
-      navigate(patch);
+      commitFilter(patch);
     },
-    [navigate]
+    [commitFilter, state.departments, state.departmentSubs, state.rd]
   );
 
   const toggleDepartment = useCallback(
     (id: string, checked: boolean) => {
-      const params = new URLSearchParams(window.location.search.slice(1));
-      const base = searchParamsToFundingListState(urlSearchParamsToRecord(params));
-      const set = new Set(base.departments);
-      if (checked) set.add(id);
-      else set.delete(id);
-      const nextSubs = { ...base.departmentSubs };
-      if (!checked) {
+      if (isNoDepartmentFilter(state) && !checked) {
+        commitFilter({
+          ...allDepartmentsSelectionExcept(id),
+          legacyAgencies: [],
+          allDepartments: false,
+          page: DEFAULT_FUNDING_LIST_PAGE,
+        });
+        return;
+      }
+
+      const set = new Set(state.departments);
+      const nextSubs = { ...state.departmentSubs };
+      const subs = getSubcomponentsForDepartment(id);
+
+      if (checked) {
+        set.add(id);
+        if (subs.length > 0) {
+          nextSubs[id] = subs.map((c) => c.id);
+        }
+      } else {
+        set.delete(id);
         delete nextSubs[id];
       }
-      navigate({
+
+      commitFilter({
         departments: Array.from(set),
         departmentSubs: nextSubs,
         legacyAgencies: [],
@@ -101,25 +161,42 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         page: DEFAULT_FUNDING_LIST_PAGE,
       });
     },
-    [navigate]
+    [commitFilter, state]
   );
 
   const toggleDepartmentSub = useCallback(
     (deptId: string, subId: string, checked: boolean) => {
-      const params = new URLSearchParams(window.location.search.slice(1));
-      const base = searchParamsToFundingListState(urlSearchParamsToRecord(params));
-      const nextSubs = { ...base.departmentSubs };
-      const setH = new Set(nextSubs[deptId] ?? []);
+      if (isNoDepartmentFilter(state) && !checked) {
+        commitFilter({
+          ...allDepartmentsSelectionExcept(undefined, { deptId, subId }),
+          legacyAgencies: [],
+          allDepartments: false,
+          page: DEFAULT_FUNDING_LIST_PAGE,
+        });
+        return;
+      }
+
+      const subs = getSubcomponentsForDepartment(deptId);
+      const nextSubs = { ...state.departmentSubs };
+      let setH = new Set(nextSubs[deptId] ?? []);
+
+      if (setH.size === 0 && state.departments.includes(deptId) && subs.length > 0) {
+        setH = new Set(subs.map((c) => c.id));
+      }
+
       if (checked) setH.add(subId);
       else setH.delete(subId);
+
+      const depts = new Set(state.departments);
       if (setH.size === 0) {
         delete nextSubs[deptId];
+        depts.delete(deptId);
       } else {
         nextSubs[deptId] = Array.from(setH);
+        depts.add(deptId);
       }
-      const depts = new Set(base.departments);
-      if (setH.size > 0) depts.add(deptId);
-      navigate({
+
+      commitFilter({
         departments: Array.from(depts),
         departmentSubs: nextSubs,
         legacyAgencies: [],
@@ -127,18 +204,18 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         page: DEFAULT_FUNDING_LIST_PAGE,
       });
     },
-    [navigate]
+    [commitFilter, state]
   );
 
   const clearDepartmentFilter = useCallback(() => {
-    navigate({
+    commitFilter({
       departments: [],
       departmentSubs: {},
       legacyAgencies: [],
       allDepartments: true,
       page: DEFAULT_FUNDING_LIST_PAGE,
     });
-  }, [navigate]);
+  }, [commitFilter]);
 
   const sortLabel = editorial
     ? "block text-[0.65rem] font-bold uppercase tracking-[0.14em] text-[var(--fo-title)]"
@@ -151,20 +228,12 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
     ? "text-[0.7rem] leading-relaxed text-[var(--fo-ink-body)]"
     : "text-[0.7rem] leading-snug text-slate-500";
 
-  const noDeptFilter =
-    state.departments.length === 0 &&
-    isDepartmentSubsEmpty(state.departmentSubs) &&
-    state.legacyAgencies.length === 0;
+  const noDeptFilter = isNoDepartmentFilter(state);
 
   return (
     <div
       className={editorial ? "space-y-5 text-[0.8125rem] text-[var(--fo-ink-body)]" : "space-y-4 text-xs"}
       aria-busy={isPending || undefined}
-      style={
-        isPending
-          ? { opacity: 0.88, transition: "opacity 120ms ease-out" }
-          : { transition: "opacity 120ms ease-out" }
-      }
     >
       <div className="flex items-center justify-between gap-2">
         <p className={editorial ? "text-[0.65rem] font-bold uppercase tracking-[0.14em] text-[var(--fo-teal)]" : "text-xs font-semibold text-slate-700"}>
@@ -192,7 +261,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
           value={state.sort}
           onChange={(e) => {
             const nextSort = e.target.value as FundingListSortKey;
-            navigate({
+            commitFilter({
               sort: nextSort,
               order: defaultSortDirForKey(nextSort),
               page: DEFAULT_FUNDING_LIST_PAGE,
@@ -214,7 +283,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
 
       <ResearchDevFiltersFields
         scope={state.scope}
-        onScopeChange={(next) => navigate({ scope: next, page: DEFAULT_FUNDING_LIST_PAGE })}
+        onScopeChange={(next) => commitFilter({ scope: next, page: DEFAULT_FUNDING_LIST_PAGE })}
         rd={state.rd}
         patchRd={patchRd}
         departments={state.departments}

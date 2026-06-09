@@ -35,7 +35,12 @@ import {
   type PipelinePiMatchRow,
 } from "@/lib/opportunity-pipeline/serializers";
 
-export type CommunityInvestigatorHit = { id: string; full_name: string; email: string | null };
+export type CommunityInvestigatorHit = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  community_label?: string | null;
+};
 
 function ChevronUpIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -144,6 +149,7 @@ export function TriageCommunityPiPanel({
   stage = "triage",
   opportunityCommunities = [],
   hideHeader = false,
+  showCommunityOnRoster = false,
 }: {
   opportunityId: string;
   communityLabel: string;
@@ -160,6 +166,8 @@ export function TriageCommunityPiPanel({
   opportunityCommunities?: PipelineCommunityRef[];
   /** Suppress panel header when parent card already shows notice context. */
   hideHeader?: boolean;
+  /** When rosters from multiple tagged communities are merged, show community under each name. */
+  showCommunityOnRoster?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -580,6 +588,11 @@ export function TriageCommunityPiPanel({
                       <span className={`mt-0.5 block truncate text-[var(--fo-metadata)] ${compact ? "text-[0.65rem]" : "text-xs"}`}>
                         {inv.email ?? "No email on file"}
                       </span>
+                      {showCommunityOnRoster && inv.community_label ? (
+                        <span className={`mt-0.5 block text-[var(--fo-ink-muted)] ${compact ? "text-[0.65rem]" : "text-xs"}`}>
+                          {inv.community_label}
+                        </span>
+                      ) : null}
                     </span>
                   </label>
                 );

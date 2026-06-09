@@ -151,8 +151,9 @@ export function FundingListResultsTable({
                   onClick={() => setShowOptionalColumns((v) => !v)}
                   className="rounded-md border border-[var(--fo-border)] bg-white px-2 py-0.5 text-[0.62rem] font-semibold normal-case tracking-normal text-[var(--fo-ink-muted)] transition-colors hover:border-[var(--fo-line-hover)] hover:text-[var(--fo-title)]"
                   aria-pressed={showOptionalColumns}
+                  aria-label={showOptionalColumns ? "Collapse columns" : "Expand columns"}
                 >
-                  Columns
+                  {showOptionalColumns ? "Collapse Columns" : "Expand Columns"}
                 </button>
                 <span className="sr-only">Actions</span>
               </div>
