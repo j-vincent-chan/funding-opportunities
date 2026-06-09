@@ -40,6 +40,7 @@ function TriageOpportunityCommunities({
   communities,
   disabled,
   onUpdated,
+  onSaved,
 }: {
   opportunityId: string;
   row: NormalizedPipelineItem;
