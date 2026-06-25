@@ -292,6 +292,7 @@ export function PipelineOpportunityBoardCard({
           </Select>
         </div>
       </div>
+    </div>
     </li>
   );
 }
