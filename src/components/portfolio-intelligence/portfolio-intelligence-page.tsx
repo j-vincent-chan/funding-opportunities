@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CartesianGrid,
   Cell,
@@ -14,6 +15,7 @@ import {
   YAxis,
   Bar,
   BarChart,
+  ReferenceLine,
 } from "recharts";
 import type { MouseHandlerDataParam } from "recharts";
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +29,6 @@ import type {
   FundingOpportunityMatch,
   Investigator,
   InvestigatorFundingMatch,
-  InvestigatorMetric,
-  InvestigatorTheme,
   MatchStrength,
   PortfolioSignalItem,
   PortfolioIntelligenceDataBundle,
@@ -72,6 +72,14 @@ import {
   signalsOverTimeStackOrder,
   sourceFromItem,
 } from "@/lib/portfolio-intelligence/signal-source";
+import {
+  buildInvestigatorProfileInsights,
+  signalAnnotationTag,
+  type GrantReadinessRow,
+  type InvestigatorProfileKpi,
+  type TopicCluster,
+  type TrajectoryAnnotation,
+} from "@/lib/portfolio-intelligence/investigator-profile-insights";
 
 type PeriodRangeId = "ytd" | "1y" | "2y" | "5y" | "10y" | "max";
 
@@ -330,39 +338,6 @@ function SignalSourceChips({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  delta,
-  comparison,
-  tone,
-}: {
-  label: string;
-  value: string;
-  delta: string;
-  comparison: string;
-  tone: "positive" | "neutral";
-}) {
-  return (
-    <div className="app-surface-card px-4 py-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-[var(--fo-ink-muted)]">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-[var(--fo-title)]">{value}</p>
-      <div className="mt-1 flex items-center gap-2">
-        <span
-          className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${
-            tone === "positive"
-              ? "bg-emerald-50 text-emerald-800"
-              : "bg-[var(--fo-paper-2)] text-[var(--fo-ink-muted)]"
-          }`}
-        >
-          {delta}
-        </span>
-        <span className="text-xs text-[var(--fo-ink-muted)]">{comparison}</span>
-      </div>
     </div>
   );
 }
@@ -853,84 +828,34 @@ function inferMechanism(match: FundingOpportunityMatch): string {
   return match.mechanism ?? "Foundation award";
 }
 
-function fallbackThemesFromSignals(
-  investigator: Investigator,
-  items: PortfolioSignalItem[]
-): InvestigatorTheme[] {
-  const sourceCounts = new Map<SignalSource, number>();
-  for (const item of items) {
-    const source = sourceFromItem(item);
-    sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
-  }
-  const sortedSources = (Array.from(sourceCounts.entries()) as Array<[SignalSource, number]>)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4);
-  const sourceThemeNames: Record<SignalSource, string> = {
-    publications: "Publication Momentum",
-    grants: "Funding Activity",
-    news: "External Visibility",
-    honors: "Recognition and Awards",
-    clinical_trials: "Clinical Translation",
-    patents: "Innovation and IP",
-    social: "Community Engagement",
-  };
-  const generated = sortedSources.map(([source, count], index) => ({
-    id: `${investigator.id}-${source}`,
-    name: sourceThemeNames[source],
-    signalCount: count,
-    trend: index === 0 ? "rising" as const : index < 3 ? "steady" as const : "emerging" as const,
-    weight: Math.max(1, 5 - index),
-  }));
-  if (generated.length > 0) return generated;
-  const baseThemes = [investigator.department, "Portfolio Development", "Funding Strategy"]
-    .filter(Boolean)
-    .slice(0, 3);
-  return baseThemes.map((theme, index) => ({
-    id: `${investigator.id}-baseline-${index}`,
-    name: theme,
-    signalCount: Math.max(1, investigator.recentSignals - index),
-    trend: index === 0 ? "steady" : "emerging",
-    weight: Math.max(1, 3 - index),
-  }));
-}
-
 function fallbackFundingMatches(investigator: Investigator): InvestigatorFundingMatch[] {
   if (investigator.name.toLowerCase().includes("alexander marson")) {
     return [
       {
         id: "nih-r01-immune-reg",
-        title: "NIH R01 - Immune Regulation and T Cell Function",
+        title: "NIH R01 — Immune Regulation and T Cell Function",
         agency: "NIH / NIAID",
         mechanism: "R01",
         dueDate: "Jun 5, 2026",
-        matchScore: 82,
+        matchScore: 87,
         whyMatch: "Aligns with T cell regulation, immune function, and mechanistic immunology.",
       },
       {
-        id: "nih-u01-cell-therapy",
-        title: "NIH U01 - Engineering Immune Cell Therapies",
-        agency: "NIH",
-        mechanism: "U01",
-        dueDate: "Jul 12, 2026",
-        matchScore: 78,
-        whyMatch: "Fits engineered T cell systems and translational cell therapy themes.",
-      },
-      {
-        id: "jdrf-immune-mech",
-        title: "JDRF - Immune Mechanisms in Type 1 Diabetes",
-        agency: "Foundation",
-        mechanism: "Foundation award",
-        dueDate: "LOI: May 28, 2026",
-        matchScore: 74,
-        whyMatch: "Relevant to Treg identity, immune tolerance, and autoimmunity.",
+        id: "nih-r01-crispr",
+        title: "NIH R01 — CRISPR-Based Perturbation Screens",
+        agency: "NIH / NIGMS",
+        mechanism: "R01",
+        dueDate: "Jul 1, 2026",
+        matchScore: 76,
+        whyMatch: "Fits CRISPR perturbation screens and functional genomics themes.",
       },
       {
         id: "czi-single-cell",
-        title: "Chan Zuckerberg Initiative - Single Cell Biology",
-        agency: "Foundation",
+        title: "CZI — Single-Cell Biology Collaborative Initiative",
+        agency: "Chan Zuckerberg Initiative",
         mechanism: "Collaborative award",
-        dueDate: "Aug 1, 2026",
-        matchScore: 69,
+        dueDate: "Jul 15, 2026",
+        matchScore: 71,
         whyMatch: "Fits perturbation screens, immune cell states, and single-cell analysis.",
       },
     ];
@@ -1067,16 +992,101 @@ function InvestigatorBrowserCard({
   );
 }
 
-function InvestigatorBrowser({
+function InvestigatorBrowserDrawer({
+  open,
+  onClose,
   investigators,
   selectedId,
   onSelect,
   globalQuery,
 }: {
+  open: boolean;
+  onClose: () => void;
   investigators: Investigator[];
   selectedId: string;
   onSelect: (id: string) => void;
   globalQuery: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  if (!mounted || !open) return null;
+
+  return createPortal(
+    <div className="app-editorial-root">
+      <button
+        type="button"
+        aria-label="Close investigator list"
+        className="fixed inset-0 z-[55] bg-[rgba(11,29,58,0.32)]"
+        onClick={onClose}
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Investigator list"
+        className="fixed left-0 top-0 z-[60] flex h-[100dvh] w-[min(100vw,22rem)] max-w-full flex-col border-r border-[#c5d2de] bg-white shadow-[16px_0_48px_rgba(11,29,58,0.18)]"
+      >
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--fo-title)]">Investigators</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs font-medium text-[var(--fo-interaction)] hover:underline"
+          >
+            Close
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <InvestigatorBrowser
+            investigators={investigators}
+            selectedId={selectedId}
+            onSelect={(id) => {
+              onSelect(id);
+              onClose();
+            }}
+            globalQuery={globalQuery}
+            embedded
+          />
+        </div>
+      </aside>
+    </div>,
+    document.body
+  );
+}
+
+function InvestigatorBrowser({
+  investigators,
+  selectedId,
+  onSelect,
+  globalQuery,
+  embedded = false,
+}: {
+  investigators: Investigator[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  globalQuery: string;
+  embedded?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<InvestigatorBrowserSort>("best-fit");
@@ -1131,181 +1141,202 @@ function InvestigatorBrowser({
     "senior-pi": "Senior PI",
   };
 
+  const body = (
+    <div className="space-y-3">
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search investigators..."
+      />
+      <Select value={sort} onChange={(e) => setSort(e.target.value as InvestigatorBrowserSort)}>
+        <option value="best-fit">Best funding fit</option>
+        <option value="recent-activity">Most recent activity</option>
+        <option value="collaboration-index">Highest collaboration index</option>
+        <option value="most-signals">Most signals</option>
+        <option value="alphabetical">Alphabetical</option>
+      </Select>
+      <div className="flex flex-wrap gap-1.5">
+        {(Object.keys(filterLabel) as InvestigatorBrowserFilter[]).map((filter) => {
+          const active = filters.includes(filter);
+          return (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => toggleFilter(filter)}
+              className={`rounded-full border px-2 py-0.5 text-xs ${
+                active
+                  ? "border-cyan-300 bg-cyan-50 text-cyan-800"
+                  : "border-[var(--border)] bg-[var(--card)] text-[var(--fo-ink-muted)]"
+              }`}
+            >
+              {filterLabel[filter]}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        className={`space-y-2 overflow-y-auto pr-1 ${
+          embedded ? "max-h-[calc(100dvh-12rem)]" : "max-h-[calc(100vh-22rem)]"
+        }`}
+      >
+        {filtered.map((inv) => (
+          <InvestigatorBrowserCard
+            key={inv.id}
+            investigator={inv}
+            selected={inv.id === selectedId}
+            onSelect={() => onSelect(inv.id)}
+          />
+        ))}
+        {filtered.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-[var(--border)] px-3 py-4 text-sm text-[var(--fo-ink-muted)]">
+            No investigators match your current search and filters.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-[var(--fo-ink-muted)]">{filtered.length} visible</p>
+        {body}
+      </div>
+    );
+  }
+
   return (
     <Card className="h-full">
       <CardHeader title="Investigators" description={`${filtered.length} visible`} />
-      <CardBody className="space-y-3">
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search investigators..."
-        />
-        <Select value={sort} onChange={(e) => setSort(e.target.value as InvestigatorBrowserSort)}>
-          <option value="best-fit">Best funding fit</option>
-          <option value="recent-activity">Most recent activity</option>
-          <option value="collaboration-index">Highest collaboration index</option>
-          <option value="most-signals">Most signals</option>
-          <option value="alphabetical">Alphabetical</option>
-        </Select>
-        <div className="flex flex-wrap gap-1.5">
-          {(Object.keys(filterLabel) as InvestigatorBrowserFilter[]).map((filter) => {
-            const active = filters.includes(filter);
-            return (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => toggleFilter(filter)}
-                className={`rounded-full border px-2 py-0.5 text-xs ${
-                  active
-                    ? "border-cyan-300 bg-cyan-50 text-cyan-800"
-                    : "border-[var(--border)] bg-[var(--card)] text-[var(--fo-ink-muted)]"
-                }`}
-              >
-                {filterLabel[filter]}
-              </button>
-            );
-          })}
-        </div>
-        <div className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-1">
-          {filtered.map((inv) => (
-            <InvestigatorBrowserCard
-              key={inv.id}
-              investigator={inv}
-              selected={inv.id === selectedId}
-              onSelect={() => onSelect(inv.id)}
-            />
-          ))}
-          {filtered.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-[var(--border)] px-3 py-4 text-sm text-[var(--fo-ink-muted)]">
-              No investigators match your current search and filters.
-            </p>
-          ) : null}
-        </div>
-      </CardBody>
+      <CardBody>{body}</CardBody>
     </Card>
   );
 }
 
-const PORTFOLIO_STAT_SOURCES = [
-  { label: "Publications", source: "publications" },
-  { label: "Grants", source: "grants" },
-  { label: "News", source: "news" },
-  { label: "Honors", source: "honors" },
-  { label: "Trials", source: "clinical_trials" },
-  { label: "Social", source: "social" },
-] as const satisfies ReadonlyArray<{ label: string; source: SignalSource }>;
+const KPI_TONE_BORDER: Record<InvestigatorProfileKpi["tone"], string> = {
+  positive: "border-b-emerald-500",
+  warning: "border-b-amber-500",
+  neutral: "border-b-slate-300",
+  critical: "border-b-red-500",
+};
 
-function portfolioStatDisplay(
-  stats: Investigator["portfolioStats"],
-  source: (typeof PORTFOLIO_STAT_SOURCES)[number]["source"]
-): string | number {
-  if (source === "social") return stats.social;
-  if (source === "clinical_trials") return stats.trials;
-  return stats[source];
-}
+const KPI_TONE_VALUE: Record<InvestigatorProfileKpi["tone"], string> = {
+  positive: "text-emerald-700",
+  warning: "text-amber-700",
+  neutral: "text-[var(--fo-title)]",
+  critical: "text-red-600",
+};
 
-function InvestigatorHeroCard({
+function InvestigatorProfileHeader({
   investigator,
-  identity,
-  trajectoryItems,
-  periodLabel,
-  onPortfolioStatClick,
+  onOpenBrowser,
+  onToggleSection,
 }: {
   investigator: Investigator;
-  identity: string;
-  trajectoryItems?: PortfolioSignalItem[];
-  periodLabel?: string;
-  onPortfolioStatClick?: (source: SignalSource) => void;
+  onOpenBrowser: () => void;
+  onToggleSection: (section: ConsultationBriefSection) => void;
 }) {
-  const scopedStats = trajectoryItems
-    ? PORTFOLIO_STAT_SOURCES.map(({ label, source }) => ({
-        label,
-        source,
-        count: trajectoryItems.filter((item) => sourceFromItem(item) === source).length,
-      }))
-    : null;
-
   return (
-    <Card>
-      <CardBody className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <InvestigatorAvatar
-              name={investigator.name}
-              photoUrl={investigator.photoUrl}
-              sizeClassName="h-12 w-12"
-              textClassName="text-sm"
-            />
-            <div>
-              <h2 className="text-xl font-semibold text-[var(--fo-title)]">{investigator.name}</h2>
-              <p className="text-sm text-[var(--fo-ink-body)]">{investigator.title}</p>
-              <p className="text-sm text-[var(--fo-ink-muted)]">{investigator.affiliation}</p>
-            </div>
-          </div>
-          <div className="text-right text-xs text-[var(--fo-ink-muted)]">
-            <p>Last updated</p>
-            <p className="font-medium text-[var(--fo-title)]">{investigator.lastUpdated}</p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <InvestigatorAvatar
+            name={investigator.name}
+            photoUrl={investigator.photoUrl}
+            sizeClassName="h-20 w-20"
+            textClassName="text-lg"
+          />
+          <div>
+            <h2 className="text-2xl font-semibold text-[var(--fo-title)]">{investigator.name}</h2>
+            <p className="text-sm text-[var(--fo-ink-body)]">
+              {investigator.title} · {investigator.affiliation}
+            </p>
+            <p className="text-xs text-[var(--fo-ink-muted)]">Last updated {investigator.lastUpdated}</p>
           </div>
         </div>
-        <p className="text-sm text-[var(--fo-ink-body)]">{identity}</p>
-        <div className="flex flex-wrap gap-2">
-          {investigator.keyThemes.slice(0, 6).map((theme) => (
-            <span key={theme} className="rounded-full border border-[var(--border)] bg-[var(--fo-paper-2)] px-2.5 py-1 text-xs text-[var(--fo-title)]">
-              {theme}
-            </span>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => onToggleSection("research-summary")}>Prep Consultation</Button>
+          <Button variant="secondary">Export Brief</Button>
+          <Button variant="ghost" onClick={onOpenBrowser}>
+            Switch investigator
+          </Button>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3 xl:grid-cols-6">
-          {scopedStats
-            ? scopedStats.map((stat) => (
-                <button
-                  key={stat.source}
-                  type="button"
-                  onClick={() => onPortfolioStatClick?.(stat.source)}
-                  disabled={!onPortfolioStatClick}
-                  className={`rounded-lg border border-[var(--border)] p-2 text-left transition-colors ${
-                    onPortfolioStatClick
-                      ? "cursor-pointer hover:border-cyan-300 hover:bg-cyan-50/40"
-                      : ""
-                  }`}
-                >
-                  <p className="text-xs text-[var(--fo-ink-muted)]">{stat.label}</p>
-                  <p className="font-semibold">{stat.count}</p>
-                  <p className="text-[10px] text-[var(--fo-ink-muted)]">{periodLabel ?? "Selected period"}</p>
-                </button>
-              ))
-            : PORTFOLIO_STAT_SOURCES.map((stat) => (
-                <div key={stat.source} className="rounded-lg border border-[var(--border)] p-2">
-                  <p className="text-xs text-[var(--fo-ink-muted)]">{stat.label}</p>
-                  <p className="font-semibold">
-                    {portfolioStatDisplay(investigator.portfolioStats, stat.source)}
-                  </p>
-                </div>
-              ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button>Generate Briefing</Button>
-          <Button variant="secondary">Find Opportunities</Button>
-          <Button variant="ghost">View Full Profile</Button>
-        </div>
-      </CardBody>
-    </Card>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {investigator.keyThemes.slice(0, 6).map((theme) => (
+          <span
+            key={theme}
+            className="rounded-full border border-[var(--border)] bg-[var(--fo-paper-2)] px-2.5 py-1 text-xs text-[var(--fo-title)]"
+          >
+            {theme}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function InvestigatorMetricCards({ metrics }: { metrics: InvestigatorMetric[] }) {
+function InvestigatorKpiRow({ kpis }: { kpis: InvestigatorProfileKpi[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {metrics.map((metric) => (
-        <div key={metric.id} className="app-surface-card px-4 py-3">
-          <p className="text-xs text-[var(--fo-ink-muted)]">{metric.label}</p>
-          <p className="mt-1 text-2xl font-semibold text-[var(--fo-title)]">{metric.value}</p>
-          <p className="mt-1 text-xs text-[var(--fo-ink-muted)]">{metric.subtext}</p>
+      {kpis.map((kpi) => (
+        <div
+          key={kpi.id}
+          className={`app-surface-card border-b-4 px-4 py-3 ${KPI_TONE_BORDER[kpi.tone]}`}
+        >
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--fo-ink-muted)]">
+            {kpi.label}
+          </p>
+          <p className={`mt-1 text-2xl font-semibold ${KPI_TONE_VALUE[kpi.tone]}`}>{kpi.value}</p>
+          <p className="mt-1 text-xs text-[var(--fo-ink-muted)]">{kpi.subtext}</p>
         </div>
       ))}
     </div>
   );
 }
+
+function ProsperaSynthesisCard({ narrative }: { narrative: string }) {
+  return (
+    <div className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50/80 to-white px-6 py-5 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-cyan-900">✦ Prospera synthesis</p>
+        <p className="text-xs text-[var(--fo-ink-muted)]">Updated today</p>
+      </div>
+      <p className="text-sm leading-7 text-[var(--fo-ink-body)]">{narrative}</p>
+    </div>
+  );
+}
+
+function MiniSparkline({ values }: { values: number[] }) {
+  if (values.length === 0) return null;
+  const max = Math.max(1, ...values);
+  const width = 56;
+  const height = 20;
+  const points = values
+    .map((value, index) => {
+      const x = (index / Math.max(1, values.length - 1)) * width;
+      const y = height - (value / max) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-5 w-14 shrink-0" aria-hidden="true">
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="text-cyan-600"
+        points={points}
+      />
+    </svg>
+  );
+}
+
+const READINESS_TAG_TONE: Record<GrantReadinessRow["tagTone"], string> = {
+  high: "bg-emerald-50 text-emerald-700",
+  moderate: "bg-amber-50 text-amber-700",
+  low: "bg-red-50 text-red-700",
+};
 
 function trajectoryDrillDownTitle(drillDown: TrajectoryDrillDown, periodLabel: string): string {
   if (drillDown.kind === "month") {
@@ -1332,14 +1363,40 @@ function resolveTrajectoryMonthKey(
   return null;
 }
 
-function SignalSourceRow({ signal }: { signal: PortfolioSignalItem }) {
+function SignalSourceRow({
+  signal,
+  investigator,
+}: {
+  signal: PortfolioSignalItem;
+  investigator?: Investigator;
+}) {
   const source = sourceFromItem(signal);
   const sourceUrl = resolveSignalSourceUrl(signal);
+  const annotation = investigator ? signalAnnotationTag(signal, investigator) : null;
   const content = (
     <>
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <Badge tone={sourceBadgeTone(source)}>{groupTitleFromSource(source)}</Badge>
+        <div className="flex items-center gap-2">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              source === "publications"
+                ? "bg-violet-500"
+                : source === "grants"
+                  ? "bg-emerald-500"
+                  : source === "news"
+                    ? "bg-amber-500"
+                    : "bg-slate-400"
+            }`}
+            aria-hidden="true"
+          />
+          <Badge tone={sourceBadgeTone(source)}>{groupTitleFromSource(source)}</Badge>
+        </div>
         <div className="flex items-center gap-2 text-xs text-[var(--fo-ink-muted)]">
+          {annotation ? (
+            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+              {annotation}
+            </span>
+          ) : null}
           <span>{dateText(signal.occurredAt)}</span>
           {sourceUrl ? (
             <span className="font-medium text-[var(--fo-interaction)]" aria-hidden="true">
@@ -1350,11 +1407,6 @@ function SignalSourceRow({ signal }: { signal: PortfolioSignalItem }) {
       </div>
       <p className="mt-1 text-sm font-semibold text-[var(--fo-title)]">{signal.title}</p>
       <p className="mt-1 text-xs text-[var(--fo-ink-body)]">{signalInsight(signal)}</p>
-      {sourceUrl ? (
-        <p className="mt-2 text-xs font-medium text-[var(--fo-interaction)]">Open source in new tab</p>
-      ) : (
-        <p className="mt-2 text-xs text-[var(--fo-ink-muted)]">Source link unavailable</p>
-      )}
     </>
   );
 
@@ -1383,6 +1435,7 @@ function ResearchTrajectoryCard({
   periodLabel,
   drillDown,
   onDrillDownChange,
+  annotations,
 }: {
   activitySeries: Investigator["activitySeries"];
   items: PortfolioSignalItem[];
@@ -1390,6 +1443,7 @@ function ResearchTrajectoryCard({
   periodLabel: string;
   drillDown: TrajectoryDrillDown | null;
   onDrillDownChange: (next: TrajectoryDrillDown | null) => void;
+  annotations: TrajectoryAnnotation[];
 }) {
   const selectMonth = (monthKey: string | null | undefined) => {
     if (!monthKey) return;
@@ -1430,24 +1484,50 @@ function ResearchTrajectoryCard({
           : 0)
       : drillDownItems.length;
 
+  const annotationColor: Record<TrajectoryAnnotation["kind"], string> = {
+    grant_end: "#2563eb",
+    new_direction: "#8b5cf6",
+    velocity: "#0e7490",
+    funding_gap: "#dc2626",
+  };
+
   return (
     <Card>
       <CardHeader
         title="Research Trajectory"
-        description={`Click a month column to list signals (${periodLabel.toLowerCase()}, current source filters)`}
+        description={`Activity over ${periodLabel.toLowerCase()} with AI annotations`}
       />
       <CardBody className="space-y-3">
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={activitySeries}
-              margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+              margin={{ top: 28, right: 8, left: 0, bottom: 0 }}
               onClick={handleChartClick}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
               <Tooltip />
+              {annotations.map((annotation) => {
+                const point = activitySeries.find((row) => row.monthKey === annotation.monthKey);
+                if (!point) return null;
+                return (
+                  <ReferenceLine
+                    key={`${annotation.monthKey}-${annotation.label}`}
+                    x={point.month}
+                    stroke={annotationColor[annotation.kind]}
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: annotation.label,
+                      position: "top",
+                      fontSize: 9,
+                      fill: annotationColor[annotation.kind],
+                    }}
+                  />
+                );
+              })}
               {(Object.keys(TRAJECTORY_BAR_COLORS) as TrajectorySegment[]).map((segment) => (
                 <Bar
                   key={segment}
@@ -1500,31 +1580,39 @@ function ResearchTrajectoryCard({
   );
 }
 
-function ThemeMapCard({ themes }: { themes: InvestigatorTheme[] }) {
-  const max = Math.max(1, ...themes.map((theme) => theme.signalCount));
+function TopicClusterCard({ clusters }: { clusters: TopicCluster[] }) {
+  const roleLabel: Record<TopicCluster["role"], string> = {
+    primary: "Primary",
+    emerging: "Emerging",
+    declining: "Declining",
+  };
+  const roleTone: Record<TopicCluster["role"], string> = {
+    primary: "text-cyan-800 bg-cyan-50",
+    emerging: "text-emerald-800 bg-emerald-50",
+    declining: "text-amber-800 bg-amber-50",
+  };
+
   return (
     <Card>
-      <CardHeader title="Research Theme Map" description="Dominant and emerging thematic clusters" />
+      <CardHeader title="Research Topic Clusters" description="Ranked by signal share and direction" />
       <CardBody className="space-y-3">
-        {themes.length === 0 ? (
+        {clusters.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--border)] px-3 py-6 text-sm text-[var(--fo-ink-muted)]">
-            Theme signals are still loading for this investigator. Try widening the time range or enabling more source filters.
+            Topic signals are still loading for this investigator.
           </div>
         ) : (
-          themes.map((theme) => (
-            <div key={theme.id} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-[var(--fo-title)]">{theme.name}</span>
-                <span className="text-xs text-[var(--fo-ink-muted)]">
-                  {theme.signalCount} signals · {theme.trend}
+          clusters.map((cluster) => (
+            <div
+              key={cluster.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] px-3 py-2.5"
+            >
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${roleTone[cluster.role]}`}>
+                  {roleLabel[cluster.role]}
                 </span>
+                <span className="text-sm font-medium text-[var(--fo-title)]">{cluster.name}</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-indigo-500"
-                  style={{ width: `${Math.max(10, Math.round((theme.signalCount / max) * 100))}%` }}
-                />
-              </div>
+              <span className="text-xs text-[var(--fo-ink-muted)]">{cluster.detail}</span>
             </div>
           ))
         )}
@@ -1536,47 +1624,33 @@ function ThemeMapCard({ themes }: { themes: InvestigatorTheme[] }) {
 function SignalTimelineCard({
   items,
   periodLabel,
+  investigator,
 }: {
   items: PortfolioSignalItem[];
   periodLabel: string;
+  investigator: Investigator;
 }) {
-  const [tab, setTab] = useState<"all" | SignalSource>("all");
-  const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<"all" | "publications" | "grants" | "news">("all");
   const visible = useMemo(() => {
     const sorted = [...items].sort((a, b) => {
       const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
       const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
       return tb - ta;
     });
-    const scoped = tab === "all" ? sorted : sorted.filter((item) => sourceFromItem(item) === tab);
-    return expanded ? scoped : scoped.slice(0, 8);
-  }, [expanded, items, tab]);
+    if (tab === "all") return sorted.slice(0, 12);
+    return sorted.filter((item) => sourceFromItem(item) === tab).slice(0, 12);
+  }, [items, tab]);
 
-  const tabs: Array<{ id: "all" | SignalSource; label: string }> = [
+  const tabs: Array<{ id: typeof tab; label: string }> = [
     { id: "all", label: "All" },
     { id: "publications", label: "Publications" },
     { id: "grants", label: "Grants" },
     { id: "news", label: "News" },
-    { id: "honors", label: "Honors" },
-    { id: "clinical_trials", label: "Trials" },
-    { id: "social", label: "Social" },
   ];
 
   return (
     <Card>
-      <CardHeader
-        title="Signal Timeline"
-        description={`Signals in ${periodLabel.toLowerCase()}, grouped by type.`}
-        action={
-          <button
-            type="button"
-            onClick={() => setExpanded((prev) => !prev)}
-            className="text-xs font-medium text-[var(--fo-interaction)]"
-          >
-            {expanded ? "Show fewer" : "Show all signals"}
-          </button>
-        }
-      />
+      <CardHeader title="Recent signals" description={`Activity in ${periodLabel.toLowerCase()}`} />
       <CardBody className="space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {tabs.map((item) => (
@@ -1596,7 +1670,7 @@ function SignalTimelineCard({
         </div>
         <div className="space-y-2">
           {visible.map((signal) => (
-            <SignalSourceRow key={signal.id} signal={signal} />
+            <SignalSourceRow key={signal.id} signal={signal} investigator={investigator} />
           ))}
           {visible.length === 0 ? (
             <p className="rounded-lg border border-dashed border-[var(--border)] px-3 py-4 text-sm text-[var(--fo-ink-muted)]">
@@ -1609,88 +1683,58 @@ function SignalTimelineCard({
   );
 }
 
-function GrantReadinessCard({
-  momentum,
-  investigator,
-  summary,
-}: {
-  momentum: "Strong" | "Moderate" | "Emerging";
-  investigator: Investigator;
-  summary: string;
-}) {
-  const readiness = [
-    { label: "Recent publication activity", value: momentum },
-    { label: "Active funding base", value: investigator.portfolioStats.grants >= 4 ? "Moderate" : "Limited" },
-    { label: "Collaboration network", value: investigator.collaborationIndex >= 75 ? "Strong" : "Moderate" },
-    { label: "Translational angle", value: investigator.portfolioStats.trials > 0 ? "Emerging" : "Limited" },
-    { label: "Clinical trial connection", value: investigator.portfolioStats.trials > 0 ? "Present" : "Limited" },
-    { label: "Federal fit", value: investigator.matchStrength >= 75 ? "Strong" : "Possible" },
-  ];
+function GrantReadinessCard({ rows }: { rows: GrantReadinessRow[] }) {
   return (
     <Card>
-      <CardHeader title="Grant Readiness Snapshot" />
+      <CardHeader title="Grant readiness" description="Data-backed indicators — form your own judgment" />
       <CardBody className="space-y-2">
-        {readiness.map((row) => (
-          <div key={row.label} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-sm">
-            <span className="text-[var(--fo-ink-body)]">{row.label}</span>
-            <span className="font-semibold text-[var(--fo-title)]">{row.value}</span>
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] px-3 py-2.5"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-[var(--fo-ink-muted)]">{row.label}</p>
+              <p className="text-sm font-semibold text-[var(--fo-title)]">{row.value}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {row.sparkline ? <MiniSparkline values={row.sparkline} /> : null}
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${READINESS_TAG_TONE[row.tagTone]}`}
+              >
+                {row.tag}
+              </span>
+            </div>
           </div>
         ))}
-        <p className="pt-1 text-sm text-[var(--fo-ink-body)]">{summary}</p>
-      </CardBody>
-    </Card>
-  );
-}
-
-function CollaborationContextCard({ collaborators }: { collaborators: Collaborator[] }) {
-  return (
-    <Card>
-      <CardHeader title="Collaboration / Network Context" />
-      <CardBody className="space-y-3">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--fo-paper-2)] p-3">
-          <svg viewBox="0 0 110 90" className="h-32 w-full">
-            <line x1="24" y1="45" x2="50" y2="22" stroke="#bfd2e8" strokeWidth={1.5} />
-            <line x1="50" y1="22" x2="82" y2="28" stroke="#bfd2e8" strokeWidth={1.5} />
-            <line x1="24" y1="45" x2="56" y2="66" stroke="#bfd2e8" strokeWidth={1.5} />
-            <line x1="56" y1="66" x2="84" y2="60" stroke="#bfd2e8" strokeWidth={1.5} />
-            <circle cx="24" cy="45" r="5" fill="#0e7490" />
-            <circle cx="50" cy="22" r="4.5" fill="#2563eb" />
-            <circle cx="82" cy="28" r="4.5" fill="#8b5cf6" />
-            <circle cx="56" cy="66" r="4.5" fill="#14b8a6" />
-            <circle cx="84" cy="60" r="4.5" fill="#94a3b8" />
-          </svg>
-        </div>
-        <div className="space-y-2">
-          {collaborators.slice(0, 4).map((collab) => (
-            <div key={collab.id} className="rounded-lg border border-[var(--border)] px-3 py-2">
-              <p className="text-sm font-medium text-[var(--fo-title)]">{collab.name}</p>
-              <p className="text-xs text-[var(--fo-ink-muted)]">
-                {collab.affiliation} · {collab.relationship.replace("-", " ")} · {collab.sharedSignals} shared signals
-              </p>
-            </div>
-          ))}
-        </div>
       </CardBody>
     </Card>
   );
 }
 
 function OpportunityMatchCard({ match }: { match: InvestigatorFundingMatch }) {
+  const daysRemaining = (() => {
+    const parsed = new Date(match.dueDate);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return Math.ceil((parsed.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  })();
+
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--fo-title)]">{match.title}</p>
           <p className="text-xs text-[var(--fo-ink-muted)]">
-            {match.agency} · {match.mechanism}
+            Closes {match.dueDate}
+            {daysRemaining != null && daysRemaining > 0 ? (
+              <span className="ml-1 font-medium text-red-600">· {daysRemaining} days</span>
+            ) : null}
           </p>
-          <p className="text-xs text-[var(--fo-ink-muted)]">Due: {match.dueDate}</p>
         </div>
-        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+        <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
           {match.matchScore}%
         </span>
       </div>
-      <p className="mt-1 text-xs text-[var(--fo-ink-body)]">Why: {match.whyMatch}</p>
     </div>
   );
 }
@@ -1698,11 +1742,14 @@ function OpportunityMatchCard({ match }: { match: InvestigatorFundingMatch }) {
 function SuggestedQuestionsCard({ questions }: { questions: string[] }) {
   return (
     <Card>
-      <CardHeader title="Suggested Consultation Questions" />
+      <CardHeader title="Suggested questions" />
       <CardBody className="space-y-2">
         {questions.map((question) => (
-          <p key={question} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--fo-ink-body)]">
-            {question}
+          <p
+            key={question}
+            className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm leading-relaxed text-[var(--fo-ink-body)]"
+          >
+            💬 {question}
           </p>
         ))}
       </CardBody>
@@ -1753,63 +1800,6 @@ function BriefBuilderCard({
   );
 }
 
-function ConsultationPrepPanel({
-  summary,
-  matches,
-  questions,
-  addedSections,
-  onToggleSection,
-}: {
-  summary: string;
-  matches: InvestigatorFundingMatch[];
-  questions: string[];
-  addedSections: ConsultationBriefSection[];
-  onToggleSection: (section: ConsultationBriefSection) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const readinessLabel = matches[0]?.matchScore >= 75 ? "Ready for consult" : "Needs opportunity review";
-  return (
-    <div className="space-y-4 lg:sticky lg:top-6">
-      <Card>
-        <CardHeader title="Consultation Prep" />
-        <CardBody className="space-y-3">
-          <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-            {readinessLabel}
-          </span>
-          <p className="text-sm text-[var(--fo-ink-body)]">{summary}</p>
-          <div className="grid gap-2">
-            <Button onClick={() => onToggleSection("research-summary")}>Add to Consultation Brief</Button>
-            <Button variant="secondary">Generate 1-page Brief</Button>
-            <Button
-              variant="ghost"
-              onClick={async () => {
-                if (typeof navigator === "undefined" || !navigator.clipboard) return;
-                await navigator.clipboard.writeText(summary);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1800);
-              }}
-            >
-              {copied ? "Summary copied" : "Copy Summary"}
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader title="Top Opportunity Matches" />
-        <CardBody className="space-y-2">
-          {matches.slice(0, 5).map((match) => (
-            <OpportunityMatchCard key={match.id} match={match} />
-          ))}
-        </CardBody>
-      </Card>
-
-      <SuggestedQuestionsCard questions={questions} />
-      <BriefBuilderCard addedSections={addedSections} onToggleSection={onToggleSection} />
-    </div>
-  );
-}
-
 function InvestigatorViewPage({
   investigators,
   selectedInvestigator,
@@ -1818,10 +1808,8 @@ function InvestigatorViewPage({
   trajectoryItems,
   trajectoryActivitySeries,
   periodLabel,
-  metrics,
   fundingMatches,
-  consultationSummary,
-  consultationQuestions,
+  profileInsights,
   addedSections,
   onToggleSection,
   globalQuery,
@@ -1833,75 +1821,70 @@ function InvestigatorViewPage({
   trajectoryItems: PortfolioSignalItem[];
   trajectoryActivitySeries: Investigator["activitySeries"];
   periodLabel: string;
-  metrics: InvestigatorMetric[];
   fundingMatches: InvestigatorFundingMatch[];
-  consultationSummary: string;
-  consultationQuestions: string[];
+  profileInsights: ReturnType<typeof buildInvestigatorProfileInsights> | null;
   addedSections: ConsultationBriefSection[];
   onToggleSection: (section: ConsultationBriefSection) => void;
   globalQuery: string;
 }) {
   const [trajectoryDrillDown, setTrajectoryDrillDown] = useState<TrajectoryDrillDown | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   useEffect(() => {
     setTrajectoryDrillDown(null);
   }, [selectedInvestigator?.id, trajectoryItems]);
-  if (!selectedInvestigator) {
+
+  if (!selectedInvestigator || !profileInsights) {
     return (
       <Card>
-        <CardBody className="text-sm text-[var(--fo-ink-muted)]">
-          Select an investigator to open the briefing workspace.
+        <CardBody className="flex flex-col items-start gap-3 py-8">
+          <p className="text-sm text-[var(--fo-ink-muted)]">
+            Select an investigator to open the briefing workspace.
+          </p>
+          <Button variant="secondary" onClick={() => setBrowserOpen(true)}>
+            Browse investigators
+          </Button>
+          <InvestigatorBrowserDrawer
+            open={browserOpen}
+            onClose={() => setBrowserOpen(false)}
+            investigators={investigators}
+            selectedId=""
+            onSelect={onSelectInvestigator}
+            globalQuery={globalQuery}
+          />
         </CardBody>
       </Card>
     );
   }
 
-  const identity = selectedInvestigator.name.toLowerCase().includes("alexander marson")
-    ? "Gene regulation, T cell engineering, CRISPR-based perturbation screens, and immune cell therapy."
-    : `${selectedInvestigator.keyThemes.slice(0, 3).join(", ")}, and translational research development across active funding domains.`;
   const momentum = momentumLabelFromActivitySeries(trajectoryActivitySeries);
-  const collaborators = buildCollaborators(selectedInvestigator);
-  const themeCards: InvestigatorTheme[] = (() => {
-    const fromProfile = selectedInvestigator.keyThemes.slice(0, 6).map((theme, index) => ({
-      id: `${selectedInvestigator.id}-${theme.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-      name: theme,
-      signalCount: Math.max(3, Math.round(selectedInvestigator.recentSignals / (index + 2))),
-      trend: index < 2 ? ("rising" as const) : index < 4 ? ("steady" as const) : ("emerging" as const),
-      weight: Math.max(1, 6 - index),
-    }));
-    if (fromProfile.length > 0) return fromProfile;
-    return fallbackThemesFromSignals(selectedInvestigator, signals);
-  })();
   const trajectoryCaption = selectedInvestigator.name.toLowerCase().includes("alexander marson")
     ? "Recent activity is concentrated in publications, with sustained work in CRISPR perturbation and T cell regulation."
     : `Recent activity shows ${momentum.toLowerCase()} momentum with emphasis on ${selectedInvestigator.keyThemes.slice(0, 2).join(" and ")}.`;
-  const readinessSummary = selectedInvestigator.name.toLowerCase().includes("alexander marson")
-    ? "This investigator has strong recent publication momentum and a clear mechanistic research identity. Best-fit opportunities are likely to emphasize immune regulation, cell engineering, perturbation biology, and translational immunology."
-    : `This investigator shows ${momentum.toLowerCase()} momentum with active themes in ${selectedInvestigator.keyThemes.slice(0, 2).join(" and ")}. Consultation should focus on near-term opportunity fit and collaborator strategy.`;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[300px,minmax(0,1fr),360px]">
-      <div>
-        <InvestigatorBrowser
-          investigators={investigators}
-          selectedId={selectedInvestigator.id}
-          onSelect={onSelectInvestigator}
-          globalQuery={globalQuery}
-        />
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <InvestigatorBrowserDrawer
+        open={browserOpen}
+        onClose={() => setBrowserOpen(false)}
+        investigators={investigators}
+        selectedId={selectedInvestigator.id}
+        onSelect={onSelectInvestigator}
+        globalQuery={globalQuery}
+      />
 
-      <div className="space-y-4">
-        <InvestigatorHeroCard
-          investigator={selectedInvestigator}
-          identity={identity}
-          trajectoryItems={trajectoryItems}
-          periodLabel={periodLabel}
-          onPortfolioStatClick={(source) =>
-            setTrajectoryDrillDown({ kind: "source", source, scope: "trajectory" })
-          }
-        />
-        <InvestigatorMetricCards metrics={metrics} />
-        <div className="grid gap-4 2xl:grid-cols-2">
+      <InvestigatorProfileHeader
+        investigator={selectedInvestigator}
+        onOpenBrowser={() => setBrowserOpen(true)}
+        onToggleSection={onToggleSection}
+      />
+
+      <InvestigatorKpiRow kpis={profileInsights.kpis} />
+
+      <ProsperaSynthesisCard narrative={profileInsights.narrative} />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
+        <div className="space-y-4">
           <ResearchTrajectoryCard
             activitySeries={trajectoryActivitySeries}
             items={trajectoryItems}
@@ -1909,27 +1892,30 @@ function InvestigatorViewPage({
             periodLabel={periodLabel}
             drillDown={trajectoryDrillDown}
             onDrillDownChange={setTrajectoryDrillDown}
+            annotations={profileInsights.trajectoryAnnotations}
           />
-          <ThemeMapCard themes={themeCards} />
-          <div className="2xl:col-span-2">
-            <SignalTimelineCard items={signals} periodLabel={periodLabel} />
-          </div>
-          <GrantReadinessCard
-            momentum={momentum}
+          <TopicClusterCard clusters={profileInsights.topicClusters} />
+          <SignalTimelineCard
+            items={signals}
+            periodLabel={periodLabel}
             investigator={selectedInvestigator}
-            summary={readinessSummary}
           />
-          <CollaborationContextCard collaborators={collaborators} />
+        </div>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader title="Top funding matches" />
+            <CardBody className="space-y-2">
+              {fundingMatches.slice(0, 3).map((match) => (
+                <OpportunityMatchCard key={match.id} match={match} />
+              ))}
+            </CardBody>
+          </Card>
+          <GrantReadinessCard rows={profileInsights.grantReadiness} />
+          <SuggestedQuestionsCard questions={profileInsights.consultationQuestions} />
+          <BriefBuilderCard addedSections={addedSections} onToggleSection={onToggleSection} />
         </div>
       </div>
-
-      <ConsultationPrepPanel
-        summary={consultationSummary}
-        matches={fundingMatches}
-        questions={consultationQuestions}
-        addedSections={addedSections}
-        onToggleSection={onToggleSection}
-      />
     </div>
   );
 }
@@ -1978,8 +1964,6 @@ export function PortfolioIntelligencePage({
   const periodLabel = periodRangeLabel(periodRange);
   const currentMonthSet = useMemo(() => new Set(currentRangeMonths), [currentRangeMonths]);
   const priorMonthSet = useMemo(() => new Set(priorRangeMonths), [priorRangeMonths]);
-  const previousMonthKey = shiftMonthKey(boundedLatestMonthKey, -1);
-
   const visibleInvestigators = useMemo(() => {
     if (!communityId || communityId === "all") return data.investigators;
     const filtered = data.investigators.filter((inv) => inv.communityId === communityId);
@@ -2039,70 +2023,6 @@ export function PortfolioIntelligencePage({
     return counts;
   }, [scopedItemsAllTime, currentMonthSet]);
 
-  const kpis = useMemo(() => {
-    const monitored = visibleInvestigators.length;
-    const thisMonthSignals = scopedItemsAllTime.filter((i) => i.monthKey === boundedLatestMonthKey).length;
-    const previousMonthSignals = scopedItemsAllTime.filter((i) => i.monthKey === previousMonthKey).length;
-    const activeInPeriod = visibleInvestigators.filter((inv) => (recentSignalsByInvestigator.get(inv.id) ?? 0) > 0).length;
-    const currentFunding = sourceFilteredItems.filter(
-      (i) => i.category === "funding" || i.source_type === "reporter"
-    ).length;
-    const priorFunding = sourceFilteredPriorItems.filter(
-      (i) => i.category === "funding" || i.source_type === "reporter"
-    ).length;
-    const pct = (curr: number, prev: number) => {
-      if (prev <= 0) return curr > 0 ? "New" : "0%";
-      const val = Math.round(((curr - prev) / prev) * 100);
-      return `${val >= 0 ? "+" : ""}${val}%`;
-    };
-    const totalSignalsInPeriod = sourceFilteredItems.length;
-    const priorTotalSignalsInPeriod = sourceFilteredPriorItems.length;
-    const rangeLabel = periodLabel;
-    return [
-      {
-        id: "monitored-investigators",
-        label: "Monitored Investigators",
-        value: monitored.toLocaleString(),
-        delta: `${activeInPeriod.toLocaleString()} active`,
-        comparison: `with signals in ${rangeLabel.toLowerCase()}`,
-        tone: "positive" as const,
-      },
-      {
-        id: "signals-in-period",
-        label: "Signals in selected period",
-        value: totalSignalsInPeriod.toLocaleString(),
-        delta: pct(totalSignalsInPeriod, priorTotalSignalsInPeriod),
-        comparison: `vs prior ${rangeLabel.toLowerCase()}`,
-        tone: "positive" as const,
-      },
-      {
-        id: "new-signals",
-        label: "New Signals This Month",
-        value: thisMonthSignals.toLocaleString(),
-        delta: pct(thisMonthSignals, previousMonthSignals),
-        comparison: "vs previous month",
-        tone: "positive" as const,
-      },
-      {
-        id: "active-funding-matches",
-        label: "Active Funding Matches",
-        value: currentFunding.toLocaleString(),
-        delta: pct(currentFunding, priorFunding),
-        comparison: "funding signals in selected period",
-        tone: "positive" as const,
-      },
-    ];
-  }, [
-    boundedLatestMonthKey,
-    previousMonthKey,
-    recentSignalsByInvestigator,
-    periodLabel,
-    scopedItemsAllTime,
-    sourceFilteredItems,
-    sourceFilteredPriorItems,
-    visibleInvestigators,
-  ]);
-
   const investigatorsForTable = useMemo(
     () =>
       visibleInvestigators.map((inv) => ({
@@ -2131,11 +2051,6 @@ export function PortfolioIntelligencePage({
         : [],
     [selectedInvestigator, data.opportunityMatchesByInvestigator]
   );
-  const selectedConsultationSummary =
-    selectedInvestigator &&
-    data.consultationPrepByInvestigator[selectedInvestigator.id]?.summary
-      ? data.consultationPrepByInvestigator[selectedInvestigator.id]!.summary
-      : "High activity and collaboration momentum. Prioritize translational opportunities with clear investigator-role fit.";
   const selectedInvestigatorSignals = useMemo(() => {
     if (!selectedInvestigator) return [];
     return sourceFilteredItems
@@ -2155,48 +2070,21 @@ export function PortfolioIntelligencePage({
     () => (selectedInvestigator ? normalizeFundingMatches(selectedInvestigator, selectedMatches) : []),
     [selectedInvestigator, selectedMatches]
   );
-  const selectedMomentum = selectedInvestigator
-    ? momentumLabelFromActivitySeries(selectedTrajectoryActivitySeries)
-    : "Emerging";
-  const investigatorMetrics = useMemo<InvestigatorMetric[]>(() => {
-    if (!selectedInvestigator) return [];
-    const recentGrants = selectedInvestigatorSignals.filter(
-      (item) => sourceFromItem(item) === "grants"
-    ).length;
-    return [
-      {
-        id: "recent-signals",
-        label: "Recent Signals",
-        value: selectedInvestigatorSignals.length.toLocaleString(),
-        subtext: periodLabel,
-      },
-      {
-        id: "recent-grants",
-        label: "Active / Recent Grants",
-        value: recentGrants.toLocaleString(),
-        subtext: "Federal and foundation",
-      },
-      {
-        id: "funding-match-score",
-        label: "Funding Match Score",
-        value: `${selectedInvestigator.matchStrength}%`,
-        subtext: "Based on active opportunities",
-      },
-      {
-        id: "research-momentum",
-        label: "Research Momentum",
-        value: selectedMomentum,
-        subtext: "Publication and grant activity",
-      },
-    ];
-  }, [selectedInvestigator, selectedInvestigatorSignals, selectedMomentum, periodLabel]);
-  const consultationQuestions = [
-    "Are you looking for individual PI, MPI, or center-scale opportunities?",
-    "Which disease contexts are most important for near-term funding?",
-    "Are there unpublished preliminary data that could support a targeted RFA?",
-    "Would you be open to foundation opportunities?",
-    "Are there clinical or translational collaborators to bring in?",
-  ];
+  const profileInsights = useMemo(() => {
+    if (!selectedInvestigator) return null;
+    return buildInvestigatorProfileInsights({
+      investigator: selectedInvestigator,
+      signals: selectedInvestigatorSignals,
+      activitySeries: selectedTrajectoryActivitySeries,
+      fundingMatches: selectedFundingMatches,
+      collaborators: buildCollaborators(selectedInvestigator),
+    });
+  }, [
+    selectedInvestigator,
+    selectedInvestigatorSignals,
+    selectedTrajectoryActivitySeries,
+    selectedFundingMatches,
+  ]);
   const selectedCommunity = data.watchedCommunities.find((community) => community.id === communityId);
 
   const communityScopedItems =
@@ -2626,21 +2514,6 @@ export function PortfolioIntelligencePage({
         </div>
       </header>
 
-      {viewMode === "investigator" ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {kpis.map((metric) => (
-            <KpiCard
-              key={metric.id}
-              label={metric.label}
-              value={metric.value}
-              delta={metric.delta}
-              comparison={metric.comparison}
-              tone={metric.tone}
-            />
-          ))}
-        </div>
-      ) : null}
-
       {viewMode === "community" ? (
         <CommunityViewPage
           strategySummary={strategySummary}
@@ -2667,14 +2540,8 @@ export function PortfolioIntelligencePage({
           trajectoryItems={selectedInvestigatorTrajectoryItems}
           trajectoryActivitySeries={selectedTrajectoryActivitySeries}
           periodLabel={periodLabel}
-          metrics={investigatorMetrics}
           fundingMatches={selectedFundingMatches}
-          consultationSummary={
-            selectedInvestigator?.name.toLowerCase().includes("alexander marson")
-              ? "Focus the consultation on whether the investigator is pursuing individual PI grants, collaborative MPI proposals, or center-scale opportunities. Ask about unpublished preliminary data, disease-specific translational angles, and potential clinical collaborators."
-              : selectedConsultationSummary
-          }
-          consultationQuestions={consultationQuestions}
+          profileInsights={profileInsights}
           addedSections={briefSections}
           globalQuery={globalSearchQuery}
           onToggleSection={(section) =>

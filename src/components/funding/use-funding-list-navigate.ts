@@ -18,7 +18,17 @@ export function mergeFundingListClientState(
   if (patch.rd !== undefined) next.rd = patch.rd;
   if (patch.allDepartments === true) {
     next.allDepartments = true;
-  } else if (
+    next.noDepartmentsSelected = false;
+  } else if (patch.allDepartments === false) {
+    next.allDepartments = false;
+  }
+  if (patch.noDepartmentsSelected === true) {
+    next.noDepartmentsSelected = true;
+    next.allDepartments = false;
+  } else if (patch.noDepartmentsSelected === false) {
+    next.noDepartmentsSelected = false;
+  }
+  if (
     patch.departments !== undefined ||
     patch.departmentSubs !== undefined ||
     patch.legacyAgencies !== undefined
@@ -27,7 +37,10 @@ export function mergeFundingListClientState(
       (next.departments?.length ?? 0) > 0 ||
       !isDepartmentSubsEmpty(next.departmentSubs) ||
       (next.legacyAgencies?.length ?? 0) > 0;
-    if (hasDept) next.allDepartments = false;
+    if (hasDept) {
+      next.allDepartments = false;
+      next.noDepartmentsSelected = false;
+    }
   }
   return next;
 }

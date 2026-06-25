@@ -9,6 +9,9 @@ import {
   useFundingListFilterState,
   useFundingListNavigate,
 } from "@/components/funding/use-funding-list-navigate";
+import type { DepartmentSubsSelection } from "@/lib/funding-opportunities/agency-filter";
+import { TOP_LEVEL_DEPARTMENTS } from "@/lib/funding-opportunities/agency-taxonomy";
+import { getSubcomponentsForDepartment } from "@/lib/funding-opportunities/department-subcomponents";
 import {
   DEFAULT_FUNDING_LIST_PAGE,
   defaultFundingListClientState,
@@ -22,14 +25,6 @@ import {
   type FundingListSortKey,
 } from "@/lib/funding-opportunities/funding-list-url";
 import type { RdListFilterState } from "@/lib/funding-opportunities/rd-list-filters";
-
-function isNoDepartmentFilter(state: FundingListClientState): boolean {
-  return (
-    state.departments.length === 0 &&
-    isDepartmentSubsEmpty(state.departmentSubs) &&
-    state.legacyAgencies.length === 0
-  );
-}
 
 function allDepartmentsSelectionExcept(
   excludeDeptId?: string,
@@ -55,9 +50,6 @@ function allDepartmentsSelectionExcept(
 
   return { departments, departmentSubs };
 }
-import type { DepartmentSubsSelection } from "@/lib/funding-opportunities/agency-filter";
-import { TOP_LEVEL_DEPARTMENTS } from "@/lib/funding-opportunities/agency-taxonomy";
-import { getSubcomponentsForDepartment } from "@/lib/funding-opportunities/department-subcomponents";
 
 function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editorial?: boolean }) {
   const sp = useSearchParams();
@@ -75,7 +67,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
       urlState.departments.length > 0 ||
       !isDepartmentSubsEmpty(urlState.departmentSubs) ||
       urlState.legacyAgencies.length > 0;
-    if (hasDept || urlState.allDepartments) return;
+    if (hasDept || urlState.allDepartments || urlState.noDepartmentsSelected) return;
 
     const defaults = defaultFundingListClientState();
     const patch: Partial<FundingListClientState> = {
@@ -83,6 +75,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
       departmentSubs: defaults.departmentSubs,
       legacyAgencies: [],
       allDepartments: false,
+      noDepartmentsSelected: false,
       page: DEFAULT_FUNDING_LIST_PAGE,
     };
     if (!record.sort && !record.order) {
@@ -94,6 +87,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
     navigate,
     record,
     urlState.allDepartments,
+    urlState.noDepartmentsSelected,
     urlState.departments,
     urlState.departmentSubs,
     urlState.legacyAgencies,
@@ -121,6 +115,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         patch.departmentSubs = nextSubs;
         patch.legacyAgencies = [];
         patch.allDepartments = false;
+        patch.noDepartmentsSelected = false;
       }
       commitFilter(patch);
     },
@@ -129,7 +124,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
 
   const toggleDepartment = useCallback(
     (id: string, checked: boolean) => {
-      if (isNoDepartmentFilter(state) && !checked) {
+      if (state.allDepartments && !checked) {
         commitFilter({
           ...allDepartmentsSelectionExcept(id),
           legacyAgencies: [],
@@ -166,7 +161,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
 
   const toggleDepartmentSub = useCallback(
     (deptId: string, subId: string, checked: boolean) => {
-      if (isNoDepartmentFilter(state) && !checked) {
+      if (state.allDepartments && !checked) {
         commitFilter({
           ...allDepartmentsSelectionExcept(undefined, { deptId, subId }),
           legacyAgencies: [],
@@ -207,15 +202,30 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
     [commitFilter, state]
   );
 
-  const clearDepartmentFilter = useCallback(() => {
-    commitFilter({
-      departments: [],
-      departmentSubs: {},
-      legacyAgencies: [],
-      allDepartments: true,
-      page: DEFAULT_FUNDING_LIST_PAGE,
-    });
-  }, [commitFilter]);
+  const onAllDepartmentsToggle = useCallback(
+    (selected: boolean) => {
+      if (selected) {
+        commitFilter({
+          departments: [],
+          departmentSubs: {},
+          legacyAgencies: [],
+          allDepartments: true,
+          noDepartmentsSelected: false,
+          page: DEFAULT_FUNDING_LIST_PAGE,
+        });
+        return;
+      }
+      commitFilter({
+        departments: [],
+        departmentSubs: {},
+        legacyAgencies: [],
+        allDepartments: false,
+        noDepartmentsSelected: true,
+        page: DEFAULT_FUNDING_LIST_PAGE,
+      });
+    },
+    [commitFilter]
+  );
 
   const sortLabel = editorial
     ? "block text-[0.65rem] font-bold uppercase tracking-[0.14em] text-[var(--fo-title)]"
@@ -228,7 +238,7 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
     ? "text-[0.7rem] leading-relaxed text-[var(--fo-ink-body)]"
     : "text-[0.7rem] leading-snug text-slate-500";
 
-  const noDeptFilter = isNoDepartmentFilter(state);
+  const allDepartmentsSelected = Boolean(state.allDepartments);
 
   return (
     <div
@@ -291,8 +301,8 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
         legacyAgencies={state.legacyAgencies}
         toggleDepartment={toggleDepartment}
         toggleDepartmentSub={toggleDepartmentSub}
-        clearDepartmentFilter={clearDepartmentFilter}
-        noDepartmentFilter={noDeptFilter}
+        onAllDepartmentsToggle={onAllDepartmentsToggle}
+        allDepartmentsSelected={allDepartmentsSelected}
         editorial={editorial}
       />
 

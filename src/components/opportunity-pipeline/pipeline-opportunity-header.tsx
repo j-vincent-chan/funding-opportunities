@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { SaveFundingOpportunityButton } from "@/components/funding/save-funding-opportunity-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -132,7 +131,6 @@ export function PipelineOpportunityHeader({
               <Button type="button" disabled={pending} onClick={onSave} className="min-h-[2.5rem] flex-1 sm:flex-none">
                 Save
               </Button>
-              <SaveFundingOpportunityButton opportunityId={opportunityId} initiallySaved />
               <Link
                 href={`/funding-opportunities/${opportunityId}`}
                 className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-xl border border-stone-300 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400/50 sm:flex-none"

@@ -1,6 +1,11 @@
 import type { DepartmentSubsSelection } from "@/lib/funding-opportunities/agency-filter";
+import type { FundingListAgencySelection } from "@/lib/funding-opportunities/keyword-filter";
 import { isKnownDepartmentId } from "@/lib/funding-opportunities/agency-taxonomy";
-import { isKnownDepartmentSubId } from "@/lib/funding-opportunities/department-subcomponents";
+import { isKnownDepartmentSubId, normalizeDepartmentSubId } from "@/lib/funding-opportunities/department-subcomponents";
+import {
+  quickFiltersFromSearchParams,
+  type FundingListQuickFilterTab,
+} from "@/lib/funding-opportunities/funding-quick-filters";
 import type { SearchParams } from "@/lib/funding-opportunities/rd-list-filters";
 import {
   appendRdListFiltersToUrlSearchParams,
@@ -31,7 +36,6 @@ export type FundingListViewTab =
   | "esi_career"
   | "investigator_initiated"
   | "foundations"
-  | "saved"
   | "immunology_translational";
 
 /** Allowed results-per-page values for the funding list. */
@@ -52,10 +56,11 @@ export type FundingListSortKey =
 export type FundingListClientState = {
   q: string;
   scope: FundingListScope;
-  tab?: FundingListViewTab;
-  /** When tab is closing_soon, optional horizon in days (default 90). */
+  /** Stacked quick filters (AND semantics). Empty = no quick filters. */
+  tabs: FundingListQuickFilterTab[];
+  /** When `closing_soon` is in tabs, horizon in days (default 30). */
   closingDays?: ClosingSoonDays;
-  /** When tab is new_this_week, optional lookback in days (default 7). */
+  /** When `new_this_week` is in tabs, lookback in days (default 7). */
   postedDays?: PostedWithinDays;
   sort: string;
   order: "asc" | "desc";
@@ -71,6 +76,8 @@ export type FundingListClientState = {
   legacyAgencies: string[];
   /** When true, URL uses `dept=all` (cross-department; skip HHS/NIH auto-default). */
   allDepartments?: boolean;
+  /** When true, URL uses `dept=none` (explicit empty department selection). */
+  noDepartmentsSelected?: boolean;
   rd: RdListFilterState;
 };
 
@@ -79,7 +86,7 @@ export function defaultFundingListClientState(): FundingListClientState {
   return {
     q: "",
     scope: "all",
-    tab: "all",
+    tabs: [],
     sort: "posted_date",
     order: "desc",
     page: DEFAULT_FUNDING_LIST_PAGE,
@@ -88,7 +95,24 @@ export function defaultFundingListClientState(): FundingListClientState {
     departmentSubs: { hhs: ["nih"] },
     legacyAgencies: [],
     allDepartments: false,
+    noDepartmentsSelected: false,
     rd: parseRdListFilters({}),
+  };
+}
+
+/** Agency + RD sidebar defaults — applied when a quick filter takes over from manual filters. */
+export function defaultSidebarFilterPatch(): Pick<
+  FundingListClientState,
+  "departments" | "departmentSubs" | "legacyAgencies" | "allDepartments" | "noDepartmentsSelected" | "rd"
+> {
+  const defaults = defaultFundingListClientState();
+  return {
+    departments: defaults.departments,
+    departmentSubs: defaults.departmentSubs,
+    legacyAgencies: defaults.legacyAgencies,
+    allDepartments: defaults.allDepartments,
+    noDepartmentsSelected: defaults.noDepartmentsSelected,
+    rd: defaults.rd,
   };
 }
 
@@ -100,6 +124,13 @@ function isExplicitAllDepartmentsParam(searchParams: SearchParams): boolean {
   const raw = searchParams.dept;
   if (raw === "all") return true;
   if (Array.isArray(raw) && raw.some((v) => v === "all")) return true;
+  return false;
+}
+
+function isExplicitNoDepartmentsParam(searchParams: SearchParams): boolean {
+  const raw = searchParams.dept;
+  if (raw === "none") return true;
+  if (Array.isArray(raw) && raw.some((v) => v === "none")) return true;
   return false;
 }
 
@@ -154,10 +185,19 @@ export function departmentsFromSearchParams(searchParams: SearchParams): string[
   for (const item of list) {
     if (typeof item !== "string" || !item.trim()) continue;
     const id = item.trim();
-    if (id === "all") continue;
+    if (id === "all" || id === "none") continue;
     if (isKnownDepartmentId(id)) out.push(id);
   }
   return Array.from(new Set(out));
+}
+
+export function agencySelectionFromSearchParams(searchParams: SearchParams): FundingListAgencySelection {
+  return {
+    departments: departmentsFromSearchParams(searchParams),
+    departmentSubs: departmentSubsFromSearchParams(searchParams),
+    legacyAgencies: agenciesFromSearchParams(searchParams),
+    noDepartmentsSelected: isExplicitNoDepartmentsParam(searchParams),
+  };
 }
 
 function mergeDepartmentSubs(
@@ -194,7 +234,8 @@ export function departmentSubsFromSearchParams(searchParams: SearchParams): Depa
     const colon = item.indexOf(":");
     if (colon <= 0) continue;
     const dept = item.slice(0, colon).trim();
-    const sid = item.slice(colon + 1).trim();
+    const rawSid = item.slice(colon + 1).trim();
+    const sid = normalizeDepartmentSubId(dept, rawSid);
     if (!dept || !sid || !isKnownDepartmentId(dept)) continue;
     if (!isKnownDepartmentSubId(dept, sid)) continue;
     mergeDepartmentSubs(out, dept, [sid]);
@@ -235,23 +276,12 @@ export function resolveListScope(searchParams: SearchParams): FundingListScope {
   return "all";
 }
 
+/** @deprecated Use {@link quickFiltersFromSearchParams} for stacked quick filters. */
 export function resolveListTab(searchParams: SearchParams): FundingListViewTab {
-  const raw = typeof searchParams.tab === "string" ? searchParams.tab : "";
-  if (
-    raw === "all" ||
-    raw === "recommended" ||
-    raw === "closing_soon" ||
-    raw === "new_this_week" ||
-    raw === "large_awards" ||
-    raw === "esi_career" ||
-    raw === "investigator_initiated" ||
-    raw === "foundations" ||
-    raw === "saved" ||
-    raw === "immunology_translational"
-  ) {
-    return raw;
-  }
-  return "all";
+  const tabs = quickFiltersFromSearchParams(searchParams);
+  if (tabs.length === 1) return tabs[0]!;
+  if (tabs.length === 0) return "all";
+  return tabs[0]!;
 }
 
 export function parseClosingDays(searchParams: SearchParams): ClosingSoonDays | undefined {
@@ -322,13 +352,13 @@ export function nextColumnSort(
 export function searchParamsToFundingListState(searchParams: SearchParams): FundingListClientState {
   const sort = parseListSort(searchParams);
   const { page, perPage } = parseFundingListPagination(searchParams);
-  const tab = resolveListTab(searchParams);
+  const tabs = quickFiltersFromSearchParams(searchParams);
   return {
     q: firstStringParam(searchParams.q),
     scope: resolveListScope(searchParams),
-    tab,
-    closingDays: tab === "closing_soon" ? parseClosingDays(searchParams) : undefined,
-    postedDays: tab === "new_this_week" ? parsePostedDays(searchParams) : undefined,
+    tabs,
+    closingDays: tabs.includes("closing_soon") ? parseClosingDays(searchParams) ?? 30 : undefined,
+    postedDays: tabs.includes("new_this_week") ? parsePostedDays(searchParams) ?? 7 : undefined,
     sort: sortParamForKey(sort.key),
     order: sort.dir,
     page,
@@ -337,6 +367,7 @@ export function searchParamsToFundingListState(searchParams: SearchParams): Fund
     departmentSubs: departmentSubsFromSearchParams(searchParams),
     legacyAgencies: agenciesFromSearchParams(searchParams),
     allDepartments: isExplicitAllDepartmentsParam(searchParams),
+    noDepartmentsSelected: isExplicitNoDepartmentsParam(searchParams),
     rd: parseRdListFilters(searchParams),
   };
 }
@@ -345,11 +376,13 @@ export function fundingListHref(state: FundingListClientState): string {
   const p = new URLSearchParams();
   if (state.q.trim()) p.set("q", state.q.trim());
   p.set("scope", state.scope);
-  if (state.tab && state.tab !== "all") p.set("tab", state.tab);
-  if (state.tab === "closing_soon" && state.closingDays) {
+  for (const tab of state.tabs) {
+    p.append("tab", tab);
+  }
+  if (state.tabs.includes("closing_soon") && state.closingDays) {
     p.set("closing_days", String(state.closingDays));
   }
-  if (state.tab === "new_this_week" && state.postedDays) {
+  if (state.tabs.includes("new_this_week") && state.postedDays) {
     p.set("posted_days", String(state.postedDays));
   }
   p.set("sort", state.sort);
@@ -363,6 +396,13 @@ export function fundingListHref(state: FundingListClientState): string {
     state.legacyAgencies.length === 0
   ) {
     p.set("dept", "all");
+  } else if (
+    state.noDepartmentsSelected &&
+    state.departments.length === 0 &&
+    isDepartmentSubsEmpty(state.departmentSubs) &&
+    state.legacyAgencies.length === 0
+  ) {
+    p.set("dept", "none");
   } else {
     for (const d of state.departments) {
       p.append("dept", d);

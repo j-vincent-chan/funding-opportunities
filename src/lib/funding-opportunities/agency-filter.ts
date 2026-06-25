@@ -3,6 +3,7 @@ import {
   getAllSubPatternsForDepartment,
   getSubcomponentsForDepartment,
   isKnownDepartmentSubId,
+  normalizeDepartmentSubId,
 } from "@/lib/funding-opportunities/department-subcomponents";
 
 export type DepartmentSubsSelection = Partial<Record<string, string[]>>;
@@ -59,7 +60,9 @@ export function buildDepartmentAgencyOrFilter(
       }
       continue;
     }
-    const selected = (departmentSubs[id] ?? []).filter((s) => isKnownDepartmentSubId(id, s));
+    const selected = (departmentSubs[id] ?? [])
+      .map((s) => normalizeDepartmentSubId(id, s))
+      .filter((s) => isKnownDepartmentSubId(id, s));
     if (selected.length > 0) {
       for (const sid of selected) {
         const sub = subsDef.find((c) => c.id === sid);

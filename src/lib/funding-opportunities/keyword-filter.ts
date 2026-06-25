@@ -8,6 +8,33 @@ import {
 
 const MAX_KEYWORD_LEN = 200;
 
+/** Curly/smart apostrophe variants normalized to ASCII `'` before search expansion. */
+const APOSTROPHE_LIKE = /[\u2018\u2019\u201B']/g;
+
+const KEYWORD_STOP_WORDS = new Set([
+  "the",
+  "and",
+  "or",
+  "to",
+  "a",
+  "an",
+  "of",
+  "for",
+  "through",
+  "in",
+  "on",
+  "at",
+  "by",
+  "with",
+  "from",
+  "into",
+  "over",
+  "under",
+]);
+
+/** Minimum significant tokens before emitting an all-tokens-must-match clause. */
+const MIN_TOKEN_AND_COUNT = 3;
+
 export function normalizeKeyword(raw: string | undefined): string {
   if (!raw || typeof raw !== "string") return "";
   return raw.trim().slice(0, MAX_KEYWORD_LEN);
@@ -17,13 +44,124 @@ function escapeIlikePattern(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+function normalizeApostrophes(keyword: string): string {
+  return keyword.replace(APOSTROPHE_LIKE, "'");
+}
+
+/**
+ * Escape user text for ILIKE, but keep `_` wildcards that stand in for apostrophes.
+ */
+function toIlikeCore(variant: string): string {
+  let out = "";
+  const normalized = normalizeApostrophes(variant);
+  for (const ch of normalized) {
+    if (ch === "'") {
+      out += "_";
+      continue;
+    }
+    if (ch === "\\") out += "\\\\";
+    else if (ch === "%") out += "\\%";
+    else if (ch === "_") out += "\\_";
+    else out += ch;
+  }
+  return out;
+}
+
+/**
+ * Typing "Nations" instead of "Nation's" — insert a possessive apostrophe so {@link toIlikeCore}
+ * can encode it as `Nation_s` and match the stored title.
+ */
+function possessiveApostropheInsertedVariant(keyword: string): string | null {
+  const next = keyword.replace(/\b([A-Za-z]{3,})s\b/g, "$1's");
+  return next !== keyword ? next : null;
+}
+
+/**
+ * Expand a keyword into text variants (apostrophe normalization / possessive stripping).
+ * Apostrophe-safe ilike encoding happens in {@link toIlikeCore}.
+ */
+export function keywordSearchVariants(keyword: string): string[] {
+  const k = normalizeApostrophes(normalizeKeyword(keyword));
+  if (!k) return [];
+
+  const variants = new Set<string>();
+  variants.add(k);
+
+  const possessiveInserted = possessiveApostropheInsertedVariant(k);
+  if (possessiveInserted) variants.add(possessiveInserted);
+
+  const withoutPossessive = k.replace(/'s\b/gi, "").replace(/\s+/g, " ").trim();
+  if (withoutPossessive) variants.add(withoutPossessive);
+
+  const withoutApostrophes = k.replace(/'/g, "").replace(/\s+/g, " ").trim();
+  if (withoutApostrophes) variants.add(withoutApostrophes);
+
+  return Array.from(variants);
+}
+
+/** Distinct words (len ≥ 4, not stop words) for long-phrase fallback matching. */
+export function significantSearchTokens(keyword: string): string[] {
+  const k = normalizeApostrophes(normalizeKeyword(keyword)).toLowerCase();
+  const words = k
+    .split(/\s+/)
+    .map((w) => w.replace(/'/g, "").replace(/[^a-z0-9]/gi, ""))
+    .filter(Boolean);
+  const tokens = words.filter((w) => w.length >= 4 && !KEYWORD_STOP_WORDS.has(w));
+  return Array.from(new Set(tokens));
+}
+
+function ilikeFieldTriplet(pattern: string): string[] {
+  const q = postgrestQuotedString(pattern);
+  return [`title.ilike.${q}`, `description.ilike.${q}`, `opportunity_number.ilike.${q}`];
+}
+
+function tokenMatchOrGroup(token: string): string {
+  const patterns = new Set<string>([`%${escapeIlikePattern(token)}%`]);
+  if (token.length >= 4 && token.endsWith("s")) {
+    const stem = token.slice(0, -1);
+    if (stem.length >= 3) {
+      patterns.add(`%${escapeIlikePattern(stem)}_%`);
+    }
+  } else if (token.length >= 4) {
+    // Match simple plurals (e.g. center → Centers).
+    patterns.add(`%${escapeIlikePattern(token)}_%`);
+  }
+  const fieldClauses = Array.from(patterns).flatMap((pat) => {
+    const q = postgrestQuotedString(pat);
+    return [`title.ilike.${q}`, `description.ilike.${q}`, `opportunity_number.ilike.${q}`];
+  });
+  return `or(${fieldClauses.join(",")})`;
+}
+
+/**
+ * When a long phrase omits words (e.g. drops "Nation's" but keeps "Health"), require every
+ * significant token to appear somewhere in title / description / opportunity number.
+ */
+function buildKeywordTokenAndClause(keyword: string): string | null {
+  const tokens = significantSearchTokens(keyword);
+  if (tokens.length < MIN_TOKEN_AND_COUNT) return null;
+
+  const tokenGroups = tokens.map((token) => tokenMatchOrGroup(token));
+  return `and(${tokenGroups.join(",")})`;
+}
+
 /** PostgREST `or(...)` body: title / description / opportunity_number ilike (case-insensitive). */
 export function buildKeywordOrFilter(keyword: string): string | null {
-  const k = normalizeKeyword(keyword);
-  if (!k) return null;
-  const pat = `%${escapeIlikePattern(k)}%`;
-  const q = postgrestQuotedString(pat);
-  return `title.ilike.${q},description.ilike.${q},opportunity_number.ilike.${q}`;
+  const variants = keywordSearchVariants(keyword);
+  if (variants.length === 0) return null;
+
+  const clauses = new Set<string>();
+  for (const variant of variants) {
+    const pat = `%${toIlikeCore(variant)}%`;
+    for (const clause of ilikeFieldTriplet(pat)) {
+      clauses.add(clause);
+    }
+  }
+
+  const tokenAnd = buildKeywordTokenAndClause(keyword);
+  if (tokenAnd) clauses.add(tokenAnd);
+
+  return Array.from(clauses).join(",");
 }
 
 export type FundingListAgencySelection = {
@@ -31,6 +169,8 @@ export type FundingListAgencySelection = {
   departmentSubs: DepartmentSubsSelection;
   /** Legacy `?agency=` labels (exact / ilike) when no department filters are set. */
   legacyAgencies: string[];
+  /** When true (`dept=none`), the user cleared every department — return no rows. */
+  noDepartmentsSelected?: boolean;
 };
 
 /**
@@ -48,6 +188,11 @@ export function applyFundingListOrFilters<T extends { or: (s: string) => T }>(
   agency: FundingListAgencySelection,
   nihIcForOverlap: string[] = []
 ): T {
+  if (agency.noDepartmentsSelected) {
+    const impossibleId = postgrestQuotedString("00000000-0000-0000-0000-000000000000");
+    return query.or(`id.eq.${impossibleId}`);
+  }
+
   const kw = buildKeywordOrFilter(keywordRaw ?? "");
   const deptSet = new Set(agency.departments);
   for (const [deptId, subs] of Object.entries(agency.departmentSubs)) {

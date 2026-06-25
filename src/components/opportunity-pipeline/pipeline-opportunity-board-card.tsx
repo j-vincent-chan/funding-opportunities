@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { SaveFundingOpportunityIconButton } from "@/components/funding/save-funding-opportunity-button";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { PIPELINE_STAGE_LABEL, type PipelineBucketTab, type PipelineStage } from "@/lib/opportunity-pipeline/constants";
@@ -111,13 +110,9 @@ export function PipelineOpportunityBoardCard({
 
   return (
     <li className="group relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--fo-border-strong)] bg-[var(--fo-paper)] shadow-[var(--fo-shadow-raised)] ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_8%,transparent)] transition-[box-shadow,transform] duration-200 hover:shadow-[0_10px_28px_rgba(15,23,42,0.09)] hover:ring-[color-mix(in_srgb,var(--fo-ink)_11%,transparent)]">
-      <div className="flex min-h-0 flex-1">
-        <div className="flex shrink-0 flex-col items-center self-stretch rounded-tl-2xl border-r border-[var(--fo-divider)] bg-[var(--fo-inset)] p-3">
-          <SaveFundingOpportunityIconButton opportunityId={row.opportunity_id} initiallySaved />
-        </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
           <div
-            className={`flex min-h-0 flex-1 flex-col rounded-tr-2xl transition-colors duration-150 ${
+            className={`flex min-h-0 flex-1 flex-col rounded-2xl transition-colors duration-150 ${
               canExpandMonitorWorkflow
                 ? "cursor-pointer hover:bg-[color-mix(in_srgb,var(--fo-inset)_88%,var(--fo-paper))] focus-within:bg-[color-mix(in_srgb,var(--fo-inset)_94%,var(--fo-paper))] focus-visible:bg-[color-mix(in_srgb,var(--fo-inset)_94%,var(--fo-paper))]"
                 : ""
@@ -251,8 +246,6 @@ export function PipelineOpportunityBoardCard({
           </div>
             </div>
           </div>
-        </div>
-      </div>
 
       <div className="mt-auto flex shrink-0 flex-col gap-2 border-t border-[var(--fo-divider)] bg-[var(--fo-inset)] px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">

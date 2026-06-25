@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TOP_LEVEL_DEPARTMENTS } from "@/lib/funding-opportunities/agency-taxonomy";
+import type { FundingListQuickFilterTab } from "@/lib/funding-opportunities/funding-quick-filters";
 import {
   DEFAULT_FUNDING_LIST_PER_PAGE,
   DEFAULT_FUNDING_LIST_PAGE,
@@ -25,7 +26,6 @@ const TABS = new Set<FundingListViewTab>([
   "esi_career",
   "investigator_initiated",
   "foundations",
-  "saved",
   "immunology_translational",
 ]);
 
@@ -50,9 +50,25 @@ function normalizeScope(v: unknown): FundingListScope {
   return "all";
 }
 
-function normalizeTab(v: unknown): FundingListViewTab {
-  if (typeof v === "string" && TABS.has(v as FundingListViewTab)) return v as FundingListViewTab;
-  return "all";
+function normalizeQuickFilterTabs(v: unknown, legacyTab?: unknown): FundingListQuickFilterTab[] {
+  const out: FundingListQuickFilterTab[] = [];
+  const add = (raw: unknown) => {
+    if (typeof raw !== "string" || !raw.trim()) return;
+    const id = raw.trim();
+    if (id === "all" || !TABS.has(id as FundingListViewTab)) return;
+    if (id === "immunology_translational") return;
+    const tab = id as FundingListQuickFilterTab;
+    if (!out.includes(tab)) out.push(tab);
+  };
+  if (Array.isArray(v)) {
+    for (const item of v) add(item);
+  } else if (typeof v === "string") {
+    add(v);
+  }
+  if (out.length === 0 && legacyTab !== undefined) {
+    add(legacyTab);
+  }
+  return out;
 }
 
 const rdListFilterStateSchema: z.ZodType<RdListFilterState> = z
@@ -98,7 +114,8 @@ const fundingListClientStateSchema = z
   .object({
     q: z.string().catch(""),
     scope: z.unknown().transform(normalizeScope),
-    tab: z.unknown().transform(normalizeTab).optional(),
+    tabs: z.array(z.string()).optional(),
+    tab: z.unknown().optional(),
     closingDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
     postedDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(),
     sort: z.string().catch("posted_date"),
@@ -109,6 +126,7 @@ const fundingListClientStateSchema = z
     departmentSubs: departmentSubsSchema,
     legacyAgencies: z.array(z.string()).catch([]),
     allDepartments: z.boolean().optional(),
+    noDepartmentsSelected: z.boolean().optional(),
     rd: z.unknown().transform((raw) => rdListFilterStateSchema.parse(raw)),
   })
   .partial()
@@ -117,7 +135,7 @@ const fundingListClientStateSchema = z
     return {
       q: partial.q ?? "",
       scope: typeof partial.scope === "string" ? normalizeScope(partial.scope) : normalizeScope(undefined),
-      tab: normalizeTab(partial.tab),
+      tabs: normalizeQuickFilterTabs(partial.tabs, partial.tab),
       closingDays:
         partial.closingDays === 30 || partial.closingDays === 60 || partial.closingDays === 90
           ? partial.closingDays
@@ -134,6 +152,7 @@ const fundingListClientStateSchema = z
       departmentSubs: partial.departmentSubs ?? {},
       legacyAgencies: partial.legacyAgencies ?? [],
       allDepartments: partial.allDepartments,
+      noDepartmentsSelected: partial.noDepartmentsSelected,
       rd,
     } satisfies FundingListClientState;
   });
@@ -160,7 +179,6 @@ const TAB_LABELS: Partial<Record<FundingListViewTab, string>> = {
   esi_career: "ESI career",
   investigator_initiated: "Investigator-initiated",
   foundations: "Foundations",
-  saved: "Bookmarked",
   immunology_translational: "Immunology translational",
 };
 
@@ -170,8 +188,10 @@ export function suggestSavedSearchName(state: FundingListClientState): string {
     return state.q.trim().slice(0, 72);
   }
   const parts: string[] = [];
-  if (state.tab && state.tab !== "all") {
-    parts.push(TAB_LABELS[state.tab] ?? state.tab);
+  if (state.tabs.length > 0) {
+    for (const tab of state.tabs) {
+      parts.push(TAB_LABELS[tab] ?? tab);
+    }
   }
   if (state.departments.includes("hhs") && (state.departmentSubs.hhs ?? []).includes("nih")) {
     parts.push("NIH");
@@ -206,6 +226,15 @@ const SUB_SHORT_LABELS: Record<string, string> = {
 };
 
 function departmentFilterSummary(state: FundingListClientState): string | null {
+  if (
+    state.noDepartmentsSelected &&
+    state.departments.length === 0 &&
+    Object.keys(state.departmentSubs).length === 0 &&
+    state.legacyAgencies.length === 0
+  ) {
+    return "No departments";
+  }
+
   if (
     state.allDepartments &&
     state.departments.length === 0 &&
@@ -248,8 +277,10 @@ export function formatSavedSearchFilterSummary(state: FundingListClientState): s
 
   parts.push(SCOPE_LABELS[state.scope] ?? SCOPE_LABELS.all);
 
-  if (state.tab && state.tab !== "all") {
-    parts.push(TAB_LABELS[state.tab] ?? state.tab);
+  if (state.tabs.length > 0) {
+    for (const tab of state.tabs) {
+      parts.push(TAB_LABELS[tab] ?? tab);
+    }
   }
 
   if (state.rd.activityFamilies.length > 0) {

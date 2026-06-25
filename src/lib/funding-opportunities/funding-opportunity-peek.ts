@@ -16,6 +16,11 @@ import {
 } from "@/lib/funding-opportunities/funding-list-row-scope";
 import { resolveExpectedNumberOfAwards } from "@/lib/funding-opportunities/expected-awards";
 import {
+  resolveEstimatedOpenDate,
+  resolveListLastUpdatedDate,
+  resolveListPostedDate,
+} from "@/lib/funding-opportunities/funding-opportunity-dates";
+import {
   resolveFundingApplicationMaterials,
   type FundingApplicationMaterials,
 } from "@/lib/funding-opportunities/funding-opportunity-application-materials";
@@ -32,6 +37,8 @@ export type FundingOpportunityPeekData = {
   statusBucket: FundingListRowBucket;
   postedDate: string | null;
   closeDate: string | null;
+  updatedAt: string | null;
+  estimatedOpenDate: string | null;
   fundingInstrument: string | null;
   activityFamilies: string[] | null;
   applicantTypes: string | null;
@@ -41,7 +48,6 @@ export type FundingOpportunityPeekData = {
   description: string;
   sourceUrl: string | null;
   quickTags: QuickMatchBuckets;
-  saved: boolean;
   piBrief: PiDecisionBrief;
   investigatorMatches: PiInvestigatorMatch[];
   similarAwardees: SimilarGrantAwardee[];
@@ -64,8 +70,7 @@ function formatApplicantTypes(value: unknown): string | null {
 
 export async function loadFundingOpportunityPeek(
   supabase: SupabaseClient,
-  id: string,
-  userId: string | null
+  id: string
 ): Promise<FundingOpportunityPeekData | null> {
   const { data: fo, error } = await supabase
     .from("funding_opportunities")
@@ -113,15 +118,7 @@ export async function loadFundingOpportunityPeek(
     coercePlainTextFromUnknown(fo.source_opportunity_id) ||
     null;
 
-  const [savedResult, investigatorMatches, similarAwardees, applicationMaterials] = await Promise.all([
-    userId
-      ? supabase
-          .from("saved_funding_opportunities")
-          .select("opportunity_id")
-          .eq("user_id", userId)
-          .eq("opportunity_id", id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
+  const [investigatorMatches, similarAwardees, applicationMaterials] = await Promise.all([
     loadPiInvestigatorMatches(supabase, quickTags, 5),
     loadSimilarGrantAwardees(supabase, fo, quickTags, 8),
     resolveFundingApplicationMaterials({
@@ -145,8 +142,21 @@ export async function loadFundingOpportunityPeek(
     opportunityNumber,
     status: coercePlainTextFromUnknown(fo.status) || null,
     statusBucket,
-    postedDate: fo.posted_date ?? null,
+    postedDate: resolveListPostedDate({
+      statusBucket,
+      postedDate: fo.posted_date ?? null,
+      rawPayload: fo.raw_payload_json,
+    }),
     closeDate: fo.close_date ?? null,
+    updatedAt: resolveListLastUpdatedDate({
+      dbUpdatedAt: fo.updated_at ?? null,
+      rawPayload: fo.raw_payload_json,
+    }),
+    estimatedOpenDate: resolveEstimatedOpenDate({
+      statusBucket,
+      postedDate: fo.posted_date ?? null,
+      rawPayload: fo.raw_payload_json,
+    }),
     fundingInstrument: coercePlainTextFromUnknown(fo.funding_instrument) || null,
     activityFamilies: Array.isArray(fo.activity_families)
       ? (fo.activity_families as string[])
@@ -162,7 +172,6 @@ export async function loadFundingOpportunityPeek(
       source_opportunity_id: fo.source_opportunity_id,
     }),
     quickTags,
-    saved: !!savedResult.data,
     piBrief,
     investigatorMatches,
     similarAwardees,

@@ -4,7 +4,7 @@ export default function FundingOpportunityDetailLoading() {
   return (
     <PageLoadingState
       message="Preparing funding notice…"
-      detail="Loading metadata, eligibility, and match context."
+      detail="Loading grant brief, eligibility, and match context."
     />
   );
 }

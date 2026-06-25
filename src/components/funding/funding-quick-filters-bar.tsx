@@ -4,17 +4,19 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DEFAULT_FUNDING_LIST_PAGE,
+  defaultSidebarFilterPatch,
   fundingListHref,
   searchParamsToFundingListState,
   urlSearchParamsToRecord,
-  type ClosingSoonDays,
-  type FundingListScope,
-  type PostedWithinDays,
+  type FundingListClientState,
 } from "@/lib/funding-opportunities/funding-list-url";
+import {
+  isQuickFilterActive,
+  type FundingListQuickFilterTab,
+} from "@/lib/funding-opportunities/funding-quick-filters";
 
 export type FundingQuickFiltersCounts = {
   matched: number;
-  saved: number;
   closing: { d30: number; d60: number; d90: number };
   scope: { all: number; open: number; forecasted: number };
   new: { week: number; month: number; quarter: number };
@@ -23,17 +25,6 @@ export type FundingQuickFiltersCounts = {
   investigatorInitiated: number;
   foundations: number;
 };
-
-type TabId =
-  | "all"
-  | "recommended"
-  | "closing_soon"
-  | "new_this_week"
-  | "large_awards"
-  | "esi_career"
-  | "investigator_initiated"
-  | "foundations"
-  | "saved";
 
 type PillTone = "violet" | "teal" | "red" | "neutral";
 
@@ -57,14 +48,6 @@ function SparkleIcon() {
   return (
     <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" fill="currentColor" aria-hidden>
       <path d="M8 1.5l.9 2.8L11.7 5l-2.8.9L8 8.7 7.1 5.9 4.3 5l2.8-.9L8 1.5zm4.5 7.2.6 1.8 1.8.6-1.8.6-.6 1.8-.6-1.8-1.8-.6 1.8-.6.6-1.8zM3.5 9.2l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7.7-2.1z" />
-    </svg>
-  );
-}
-
-function BookmarkIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <path d="M4 2.5h8v11l-4-2.5-4 2.5v-11z" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -195,6 +178,22 @@ function DropdownItem({
   );
 }
 
+function toggleQuickFilterTab(
+  tabs: FundingListQuickFilterTab[],
+  tab: FundingListQuickFilterTab
+): FundingListQuickFilterTab[] {
+  if (tabs.includes(tab)) return tabs.filter((t) => t !== tab);
+  return [...tabs, tab];
+}
+
+function addQuickFilterTab(
+  tabs: FundingListQuickFilterTab[],
+  tab: FundingListQuickFilterTab
+): FundingListQuickFilterTab[] {
+  if (tabs.includes(tab)) return tabs;
+  return [...tabs, tab];
+}
+
 export function FundingQuickFiltersBar({
   counts,
   variant = "standalone",
@@ -208,44 +207,35 @@ export function FundingQuickFiltersBar({
   const [openMenu, setOpenMenu] = useState<"closing" | "scope" | "new" | null>(null);
 
   const state = searchParamsToFundingListState(urlSearchParamsToRecord(searchParams));
-  const activeTab = (state.tab ?? "all") as TabId;
+  const activeTabs = state.tabs;
   const scope = state.scope;
   const closingDays = state.closingDays ?? 30;
   const postedDays = state.postedDays ?? 7;
 
   const navigate = useCallback(
-    (next: {
-      tab?: TabId;
-      scope?: FundingListScope;
-      closingDays?: ClosingSoonDays;
-      postedDays?: PostedWithinDays;
-      clearTab?: boolean;
-    }) => {
-      const resolvedTab = next.clearTab ? undefined : next.tab ?? state.tab;
+    (patch: Partial<FundingListClientState>, options?: { resetSidebar?: boolean }) => {
       router.push(
         fundingListHref({
           ...state,
-          tab: resolvedTab,
-          scope: next.scope ?? state.scope,
-          closingDays: resolvedTab === "closing_soon" ? (next.closingDays ?? closingDays) : undefined,
-          postedDays: resolvedTab === "new_this_week" ? (next.postedDays ?? postedDays) : undefined,
+          ...(options?.resetSidebar ? defaultSidebarFilterPatch() : {}),
+          ...patch,
           page: DEFAULT_FUNDING_LIST_PAGE,
         })
       );
       setOpenMenu(null);
     },
-    [closingDays, postedDays, router, state]
+    [router, state]
   );
 
-  const toggleTab = useCallback(
-    (tab: TabId) => {
-      if (activeTab === tab) {
-        navigate({ clearTab: true });
-      } else {
-        navigate({ tab });
-      }
+  const toggleQuickFilter = useCallback(
+    (tab: FundingListQuickFilterTab) => {
+      const turningOff = activeTabs.includes(tab);
+      navigate(
+        { tabs: toggleQuickFilterTab(activeTabs, tab) },
+        { resetSidebar: !turningOff }
+      );
     },
-    [activeTab, navigate]
+    [activeTabs, navigate]
   );
 
   useEffect(() => {
@@ -273,16 +263,16 @@ export function FundingQuickFiltersBar({
   const newCount =
     postedDays === 7 ? counts.new.week : postedDays === 30 ? counts.new.month : counts.new.quarter;
 
-  const matchedActive = activeTab === "recommended";
-  const savedActive = activeTab === "saved";
-  const closingActive = activeTab === "closing_soon" || openMenu === "closing";
-  const scopeActive = (scope !== "all" || openMenu === "scope") && activeTab === "all";
-  const scopeMenuActive = openMenu === "scope" || (activeTab === "all" && scope !== "closed");
-  const newActive = activeTab === "new_this_week" || openMenu === "new";
-  const esiActive = activeTab === "esi_career";
-  const collaborativeActive = activeTab === "large_awards";
-  const investigatorActive = activeTab === "investigator_initiated";
-  const foundationsActive = activeTab === "foundations";
+  const matchedActive = isQuickFilterActive(activeTabs, "recommended");
+  const closingActive = isQuickFilterActive(activeTabs, "closing_soon") || openMenu === "closing";
+  const scopeMenuOpen = openMenu === "scope";
+  const scopeActive = scope !== "all" || scopeMenuOpen;
+  const scopeMenuActive = scopeMenuOpen || scope !== "closed";
+  const newActive = isQuickFilterActive(activeTabs, "new_this_week") || openMenu === "new";
+  const esiActive = isQuickFilterActive(activeTabs, "esi_career");
+  const collaborativeActive = isQuickFilterActive(activeTabs, "large_awards");
+  const investigatorActive = isQuickFilterActive(activeTabs, "investigator_initiated");
+  const foundationsActive = isQuickFilterActive(activeTabs, "foundations");
 
   const shellClass =
     variant === "embedded"
@@ -299,24 +289,12 @@ export function FundingQuickFiltersBar({
 
         <button
           type="button"
-          onClick={() => toggleTab("recommended")}
+          onClick={() => toggleQuickFilter("recommended")}
           className={pillClasses("violet", matchedActive)}
         >
           <SparkleIcon />
           <span>Matched to me</span>
           <PillCount count={counts.matched} active={matchedActive} tone="brand" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => toggleTab("saved")}
-          className={pillClasses("teal", savedActive)}
-          aria-label="Filter to bookmarked notices"
-          title="Bookmarked notices"
-        >
-          <BookmarkIcon />
-          <span>Bookmarked</span>
-          <PillCount count={counts.saved} active={savedActive} tone="teal" />
         </button>
 
         <PillDivider />
@@ -329,9 +307,9 @@ export function FundingQuickFiltersBar({
             className={pillClasses("red", closingActive)}
           >
             <ClockIcon />
-            <span>{activeTab === "closing_soon" ? `Closing in ${closingLabel}` : "Closing soon"}</span>
+            <span>{isQuickFilterActive(activeTabs, "closing_soon") ? `Closing in ${closingLabel}` : "Closing soon"}</span>
             <PillCount
-              count={activeTab === "closing_soon" ? closingCount : counts.closing.d30}
+              count={isQuickFilterActive(activeTabs, "closing_soon") ? closingCount : counts.closing.d30}
               active={closingActive}
               tone="red"
             />
@@ -342,22 +320,58 @@ export function FundingQuickFiltersBar({
               label="30 days"
               count={counts.closing.d30}
               countClassName="text-red-700"
-              selected={activeTab === "closing_soon" && closingDays === 30}
-              onSelect={() => navigate({ tab: "closing_soon", closingDays: 30 })}
+              selected={isQuickFilterActive(activeTabs, "closing_soon") && closingDays === 30}
+              onSelect={() => {
+                if (isQuickFilterActive(activeTabs, "closing_soon") && closingDays === 30) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
+                    closingDays: 30,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
             />
             <DropdownItem
               label="60 days"
               count={counts.closing.d60}
               countClassName="text-amber-700"
-              selected={activeTab === "closing_soon" && closingDays === 60}
-              onSelect={() => navigate({ tab: "closing_soon", closingDays: 60 })}
+              selected={isQuickFilterActive(activeTabs, "closing_soon") && closingDays === 60}
+              onSelect={() => {
+                if (isQuickFilterActive(activeTabs, "closing_soon") && closingDays === 60) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
+                    closingDays: 60,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
             />
             <DropdownItem
               label="90 days"
               count={counts.closing.d90}
               countClassName="text-sky-700"
-              selected={activeTab === "closing_soon" && closingDays === 90}
-              onSelect={() => navigate({ tab: "closing_soon", closingDays: 90 })}
+              selected={isQuickFilterActive(activeTabs, "closing_soon") && closingDays === 90}
+              onSelect={() => {
+                if (isQuickFilterActive(activeTabs, "closing_soon") && closingDays === 90) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
+                    closingDays: 90,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
             />
           </DropdownMenu>
         </div>
@@ -366,32 +380,38 @@ export function FundingQuickFiltersBar({
           <button
             type="button"
             aria-expanded={openMenu === "scope"}
-            onClick={() => setOpenMenu((m) => (m === "scope" ? null : "scope"))}
-            className={pillClasses("neutral", scopeActive || openMenu === "scope")}
+            onClick={() => {
+              if (scope !== "all" && !scopeMenuOpen) {
+                navigate({ scope: "all" }, { resetSidebar: true });
+                return;
+              }
+              setOpenMenu((m) => (m === "scope" ? null : "scope"));
+            }}
+            className={pillClasses("neutral", scopeActive || scopeMenuOpen)}
           >
             <TargetIcon />
             <span>{scopeLabel}</span>
-            <PillCount count={scopeCount} active={scopeActive || openMenu === "scope"} />
+            <PillCount count={scopeCount} active={scopeActive || scopeMenuOpen} />
             <ChevronDown className="h-4 w-4 opacity-70" />
           </button>
-          <DropdownMenu open={openMenu === "scope"}>
+          <DropdownMenu open={scopeMenuOpen}>
             <DropdownItem
               label="Open & forecasted"
               count={counts.scope.all}
               selected={scopeMenuActive && scope === "all"}
-              onSelect={() => navigate({ clearTab: true, scope: "all" })}
+              onSelect={() => navigate({ scope: "all" }, { resetSidebar: true })}
             />
             <DropdownItem
               label="Open only"
               count={counts.scope.open}
               selected={scopeMenuActive && scope === "open"}
-              onSelect={() => navigate({ clearTab: true, scope: "open" })}
+              onSelect={() => navigate({ scope: "open" }, { resetSidebar: true })}
             />
             <DropdownItem
               label="Forecasted only"
               count={counts.scope.forecasted}
               selected={scopeMenuActive && scope === "forecasted"}
-              onSelect={() => navigate({ clearTab: true, scope: "forecasted" })}
+              onSelect={() => navigate({ scope: "forecasted" }, { resetSidebar: true })}
             />
           </DropdownMenu>
         </div>
@@ -404,9 +424,9 @@ export function FundingQuickFiltersBar({
             className={pillClasses("neutral", newActive)}
           >
             <BellIcon />
-            <span>{activeTab === "new_this_week" ? newLabel : "New this week"}</span>
+            <span>{isQuickFilterActive(activeTabs, "new_this_week") ? newLabel : "New this week"}</span>
             <PillCount
-              count={activeTab === "new_this_week" ? newCount : counts.new.week}
+              count={isQuickFilterActive(activeTabs, "new_this_week") ? newCount : counts.new.week}
               active={newActive}
             />
             <ChevronDown className="h-4 w-4 opacity-70" />
@@ -415,34 +435,70 @@ export function FundingQuickFiltersBar({
             <DropdownItem
               label="This week"
               count={counts.new.week}
-              selected={activeTab === "new_this_week" && postedDays === 7}
-              onSelect={() => navigate({ tab: "new_this_week", postedDays: 7 })}
+              selected={isQuickFilterActive(activeTabs, "new_this_week") && postedDays === 7}
+              onSelect={() => {
+                if (isQuickFilterActive(activeTabs, "new_this_week") && postedDays === 7) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "new_this_week") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "new_this_week"),
+                    postedDays: 7,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
             />
             <DropdownItem
               label="This month"
               count={counts.new.month}
-              selected={activeTab === "new_this_week" && postedDays === 30}
-              onSelect={() => navigate({ tab: "new_this_week", postedDays: 30 })}
+              selected={isQuickFilterActive(activeTabs, "new_this_week") && postedDays === 30}
+              onSelect={() => {
+                if (isQuickFilterActive(activeTabs, "new_this_week") && postedDays === 30) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "new_this_week") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "new_this_week"),
+                    postedDays: 30,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
             />
             <DropdownItem
               label="This quarter"
               count={counts.new.quarter}
-              selected={activeTab === "new_this_week" && postedDays === 90}
-              onSelect={() => navigate({ tab: "new_this_week", postedDays: 90 })}
+              selected={isQuickFilterActive(activeTabs, "new_this_week") && postedDays === 90}
+              onSelect={() => {
+                if (isQuickFilterActive(activeTabs, "new_this_week") && postedDays === 90) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "new_this_week") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "new_this_week"),
+                    postedDays: 90,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
             />
           </DropdownMenu>
         </div>
 
         <PillDivider />
 
-        <button type="button" onClick={() => toggleTab("esi_career")} className={pillClasses("neutral", esiActive)}>
+        <button type="button" onClick={() => toggleQuickFilter("esi_career")} className={pillClasses("neutral", esiActive)}>
           <span>Early career / ESI</span>
           <PillCount count={counts.esi} active={esiActive} />
         </button>
 
         <button
           type="button"
-          onClick={() => toggleTab("large_awards")}
+          onClick={() => toggleQuickFilter("large_awards")}
           className={pillClasses("neutral", collaborativeActive)}
         >
           <span>Collaborative</span>
@@ -451,7 +507,7 @@ export function FundingQuickFiltersBar({
 
         <button
           type="button"
-          onClick={() => toggleTab("investigator_initiated")}
+          onClick={() => toggleQuickFilter("investigator_initiated")}
           className={pillClasses("neutral", investigatorActive)}
         >
           <span>Investigator-initiated</span>
@@ -460,7 +516,7 @@ export function FundingQuickFiltersBar({
 
         <button
           type="button"
-          onClick={() => toggleTab("foundations")}
+          onClick={() => toggleQuickFilter("foundations")}
           className={pillClasses("neutral", foundationsActive)}
         >
           <span>Foundations</span>

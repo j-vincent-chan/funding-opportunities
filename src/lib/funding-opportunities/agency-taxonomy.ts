@@ -64,6 +64,7 @@ export const TOP_LEVEL_DEPARTMENTS: readonly DepartmentDef[] = [
       "DOD",
       "Defense Advanced Research",
       "DARPA",
+      "Defense Health Agency",
     ],
   },
   {

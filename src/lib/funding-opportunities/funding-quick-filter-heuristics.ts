@@ -4,6 +4,8 @@ export type FundingQuickFilterRow = {
   agency_code: string | null;
   close_date: string | null;
   posted_date: string | null;
+  updated_at?: string | null;
+  raw_payload_json?: unknown;
   funding_instrument: string | null;
   status: string | null;
   forecasted: boolean | null;

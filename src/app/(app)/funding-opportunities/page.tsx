@@ -3,22 +3,22 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate } from "@/lib/formatting/dates";
 import { SimplerSyncControls } from "@/components/funding/simpler-sync-controls";
-import { applyFundingListOrFilters } from "@/lib/funding-opportunities/keyword-filter";
 import { DEFAULT_MAX_NOFOS_PER_SYNC } from "@/lib/services/simpler-grants-sync";
 import {
-  applyRdFiltersToFundingQuery,
-  isMissingRdColumnsPostgrestError,
   parseRdListFilters,
   rdFiltersActive,
   type SearchParams,
 } from "@/lib/funding-opportunities/rd-list-filters";
 import {
-  agenciesFromSearchParams,
-  departmentsFromSearchParams,
+  fetchFundingListRows,
+  FUNDING_LIST_FETCH_MAX_ROWS,
+  type FundingListDbRow,
+} from "@/lib/funding-opportunities/fetch-funding-list-rows";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import {
+  agencySelectionFromSearchParams,
   firstStringParam,
   fundingListHref,
-  fundingListHrefWithSortOverride,
-  departmentSubsFromSearchParams,
   isDepartmentSubsEmpty,
   nextColumnSort,
   parseFundingListPagination,
@@ -26,17 +26,21 @@ import {
   parseClosingDays,
   parsePostedDays,
   resolveListScope,
+  searchParamsToFundingListState,
   type FundingListSortKey,
 } from "@/lib/funding-opportunities/funding-list-url";
 import { type FundingQuickFiltersCounts } from "@/components/funding/funding-quick-filters-bar";
 import { FundingListToolbar } from "@/components/funding/funding-list-toolbar";
+import {
+  applyFundingQuickFilters,
+  quickFiltersFromSearchParams,
+} from "@/lib/funding-opportunities/funding-quick-filters";
 import {
   isEsiCareerDevelopment,
   isFoundationOpportunity,
   isInvestigatorInitiated,
   isRecommendedMatch,
   looksLargeCollaborativeGrant,
-  recommendationScore as scoreRecommendation,
 } from "@/lib/funding-opportunities/funding-quick-filter-heuristics";
 import { FundingListKeywordSearch } from "@/components/funding/funding-list-keyword-search";
 import { FundingChatPanel } from "@/components/funding/funding-chat-panel";
@@ -48,8 +52,16 @@ import {
 } from "@/components/funding/funding-list-results-table";
 import { normalizeAgencyDisplayName } from "@/lib/funding-opportunities/agency-display";
 import {
+  resolveEstimatedOpenDate,
+  resolveListPostedDate,
+  resolveRowLastUpdatedAt,
+  isNewWithinDays,
+} from "@/lib/funding-opportunities/funding-opportunity-dates";
+import {
   formatSavedSearchFilterSummary,
+  fundingListStateForBookmark,
   parseSavedFundingListState,
+  savedSearchMatchesCurrentState,
 } from "@/lib/funding-opportunities/saved-funding-list-state";
 import { fetchSavedFundingSearchesForUser } from "@/lib/funding-opportunities/saved-funding-search-query";
 import { fetchActiveRdsgOwnersForAlerts } from "@/lib/funding-opportunities/saved-search-alert-recipients";
@@ -67,51 +79,12 @@ import {
   type FundingListRowBucket,
 } from "@/lib/funding-opportunities/funding-list-row-scope";
 
-type OpportunityViewTab =
-  | "all"
-  | "recommended"
-  | "closing_soon"
-  | "new_this_week"
-  | "large_awards"
-  | "esi_career"
-  | "investigator_initiated"
-  | "foundations"
-  | "saved"
-  | "immunology_translational";
-
-function resolveOpportunityTab(searchParams: SearchParams): OpportunityViewTab {
-  const raw = typeof searchParams.tab === "string" ? searchParams.tab : "";
-  if (
-    raw === "all" ||
-    raw === "recommended" ||
-    raw === "closing_soon" ||
-    raw === "new_this_week" ||
-    raw === "large_awards" ||
-    raw === "esi_career" ||
-    raw === "investigator_initiated" ||
-    raw === "foundations" ||
-    raw === "saved" ||
-    raw === "immunology_translational"
-  ) {
-    return raw;
-  }
-  return "all";
-}
-
-function withTabParam(href: string, tab: OpportunityViewTab): string {
-  if (tab === "all") return href;
-  const [base, query = ""] = href.split("?");
-  const params = new URLSearchParams(query);
-  params.set("tab", tab);
-  return `${base}?${params.toString()}`;
-}
-
 function buildFundingListUrl(
   current: SearchParams,
-  next: { sort: string; order: "asc" | "desc" },
-  tab: OpportunityViewTab
+  next: { sort: string; order: "asc" | "desc" }
 ): string {
-  return withTabParam(fundingListHrefWithSortOverride(current, next.sort, next.order), tab);
+  const base = searchParamsToFundingListState(current);
+  return fundingListHref({ ...base, sort: next.sort, order: next.order, page: 1 });
 }
 
 const SORT_COLUMNS: FundingListSortKey[] = [
@@ -128,19 +101,19 @@ export default async function FundingOpportunitiesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const activeTab = resolveOpportunityTab(searchParams);
+  const activeQuickFilters = quickFiltersFromSearchParams(searchParams);
+  const closingDays = parseClosingDays(searchParams) ?? 30;
+  const postedDays = parsePostedDays(searchParams) ?? 7;
   const scope = resolveListScope(searchParams);
   const sortState = parseListSort(searchParams);
   const rdFilterState = parseRdListFilters(searchParams);
-  const agencySelection = {
-    departments: departmentsFromSearchParams(searchParams),
-    departmentSubs: departmentSubsFromSearchParams(searchParams),
-    legacyAgencies: agenciesFromSearchParams(searchParams),
-  };
+  const agencySelection = agencySelectionFromSearchParams(searchParams);
+  const noDepartmentsSelected = Boolean(agencySelection.noDepartmentsSelected);
   const hasAgencyFilter =
-    agencySelection.departments.length > 0 ||
-    !isDepartmentSubsEmpty(agencySelection.departmentSubs) ||
-    agencySelection.legacyAgencies.length > 0;
+    !noDepartmentsSelected &&
+    (agencySelection.departments.length > 0 ||
+      !isDepartmentSubsEmpty(agencySelection.departmentSubs) ||
+      agencySelection.legacyAgencies.length > 0);
   const qParam = firstStringParam(searchParams.q);
   const { page: requestedPage, perPage } = parseFundingListPagination(searchParams);
 
@@ -150,76 +123,26 @@ export default async function FundingOpportunitiesPage({
   const asc = sortDir === "asc";
   const clientSortOnly = sortKey === "status";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function applySortOrder(query: any): any {
-    let qq = query;
-    if (!clientSortOnly) {
-      if (sortKey === "title") {
-        qq = qq.order("title", { ascending: asc, nullsFirst: false });
-      } else if (sortKey === "agency") {
-        qq = qq.order("agency", { ascending: asc, nullsFirst: false });
-      } else if (sortKey === "posted_date") {
-        qq = qq.order("posted_date", { ascending: asc, nullsFirst: false });
-      } else if (sortKey === "close_date") {
-        qq = qq.order("close_date", { ascending: asc, nullsFirst: false });
-      } else if (sortKey === "funding_instrument") {
-        qq = qq.order("funding_instrument", { ascending: asc, nullsFirst: false });
-      } else {
-        qq = qq.order("close_date", { ascending: true, nullsFirst: false });
-      }
-    } else {
-      qq = qq.order("close_date", { ascending: true, nullsFirst: false });
-    }
-    return qq;
-  }
-
-  const fundingListSelectBase =
-    "id, title, agency, agency_code, close_date, posted_date, funding_instrument, status, forecasted, source_system, source_opportunity_id";
-  const fundingListSelectWithHeuristics = `${fundingListSelectBase}, activity_families`;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function buildFundingListQuery(opts: { rdFilters: boolean; heuristicColumns: boolean }): any {
-    const selectStr = opts.heuristicColumns ? fundingListSelectWithHeuristics : fundingListSelectBase;
-    let query = supabase.from("funding_opportunities").select(selectStr).limit(DEFAULT_MAX_NOFOS_PER_SYNC);
-    query = applyFundingListOrFilters(query, qParam, agencySelection, rdFilterState.nihIc);
-    const rdWithoutNihIc = { ...rdFilterState, nihIc: [] as string[] };
-    if (opts.rdFilters && rdFiltersActive(rdWithoutNihIc)) {
-      query = applyRdFiltersToFundingQuery(query, rdWithoutNihIc);
-    }
-    return applySortOrder(query);
-  }
-
-  const initialListPromise = buildFundingListQuery({
-    rdFilters: true,
-    heuristicColumns: true,
-  });
-
-  const [countResult, firstList] = await Promise.all([
+  const [countResult, listFetch] = await Promise.all([
     supabase.from("funding_opportunities").select("id", { count: "exact", head: true }),
-    initialListPromise,
+    fetchFundingListRows(supabase, {
+      agencySelection,
+      qParam,
+      rdFilterState,
+      sortKey,
+      sortDir,
+      clientSortOnly,
+    }),
   ]);
 
   const fundingOppDbTotal = countResult.count;
-
-  let rdFiltersSkippedMigration = false;
-  let listIncludesActivityFamilies = true;
-  let { data: rows, error } = firstList;
-  if (
-    error &&
-    rdFiltersActive(rdFilterState) &&
-    isMissingRdColumnsPostgrestError(error.message)
-  ) {
-    rdFiltersSkippedMigration = true;
-    const second = await buildFundingListQuery({ rdFilters: false, heuristicColumns: true });
-    rows = second.data;
-    error = second.error;
-  }
-  if (error && isMissingRdColumnsPostgrestError(error.message)) {
-    listIncludesActivityFamilies = false;
-    const third = await buildFundingListQuery({ rdFilters: false, heuristicColumns: false });
-    rows = third.data;
-    error = third.error;
-  }
+  const {
+    rows,
+    error: listError,
+    truncated: listTruncated,
+    rdFiltersSkippedMigration,
+    listIncludesActivityFamilies,
+  } = listFetch;
 
   const {
     data: { user },
@@ -227,38 +150,30 @@ export default async function FundingOpportunitiesPage({
 
   const dismissedOppIds = new Set<string>();
   if (user) {
-    const dismissedRes = await supabase
-      .from("dismissed_funding_opportunities")
-      .select("opportunity_id")
-      .eq("user_id", user.id)
-      .limit(DEFAULT_MAX_NOFOS_PER_SYNC);
-    if (!dismissedRes.error) {
-      for (const row of dismissedRes.data ?? []) {
+    const { data: dismissedRows, error: dismissedError } = await fetchAllRows<{ opportunity_id: string }>(
+      async (from, to) => {
+        const res = await supabase
+          .from("dismissed_funding_opportunities")
+          .select("opportunity_id")
+          .eq("user_id", user.id)
+          .order("opportunity_id", { ascending: true })
+          .range(from, to);
+        return { data: res.data ?? [], error: res.error };
+      },
+      { maxRows: 50_000 }
+    );
+    if (!dismissedError) {
+      for (const row of dismissedRows) {
         if (row.opportunity_id) dismissedOppIds.add(row.opportunity_id);
       }
     }
   }
 
   const today = new Date(new Date().toDateString());
-  type FundingListRow = {
-    id: string;
-    title: string;
-    agency: string | null;
-    agency_code: string | null;
-    close_date: string | null;
-    posted_date: string | null;
-    funding_instrument: string | null;
-    status: string | null;
-    forecasted: boolean | null;
-    source_system?: string | null;
-    source_opportunity_id?: string | null;
-    activity_families?: string[] | null;
-  };
-  const filtered = (rows ?? [])
-    .filter((r: FundingListRow) => !dismissedOppIds.has(r.id))
-    .filter((r: FundingListRow) =>
-      fundingListRowMatchesScope(fundingListRowScope(r, today), scope)
-    );
+  type FundingListRow = FundingListDbRow;
+  const filtered = rows
+    .filter((r) => !dismissedOppIds.has(r.id))
+    .filter((r) => fundingListRowMatchesScope(fundingListRowScope(r, today), scope));
 
   const addDays = (base: Date, days: number) => new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
   const inDays = (iso: string | null, days: number) => {
@@ -273,8 +188,16 @@ export default async function FundingOpportunitiesPage({
     if (Number.isNaN(d.getTime())) return false;
     return d >= addDays(today, -days) && d <= addDays(today, 1);
   };
-  const isImmunologyTranslationalFit = (row: FundingListRow) =>
-    /immun|inflamm|translat/i.test(`${row.title} ${row.activity_families?.join(" ") ?? ""}`);
+  const isRowNewWithinDays = (row: FundingListRow, days: number) =>
+    isNewWithinDays(
+      {
+        statusBucket: fundingListRowScope(row, today),
+        postedDate: row.posted_date,
+        updatedAt: resolveRowLastUpdatedAt(row),
+      },
+      days,
+      postedWithinDays
+    );
 
   function statusRank(bucket: FundingListRowBucket): number {
     if (bucket === "forecasted") return 0;
@@ -304,48 +227,13 @@ export default async function FundingOpportunitiesPage({
     });
   }
 
-  const sortedByPostedDesc = [...sorted].sort((a, b) => {
-    const ad = a.posted_date ? new Date(a.posted_date).getTime() : 0;
-    const bd = b.posted_date ? new Date(b.posted_date).getTime() : 0;
-    return bd - ad;
+  const tabbed = applyFundingQuickFilters(sorted, activeQuickFilters, {
+    today,
+    inDays,
+    postedWithinDays,
+    closingDays,
+    postedDays,
   });
-  const savedOppIdsOnPage = new Set<string>();
-  const savedOppIdsAll = new Set<string>();
-  if (user) {
-    const savedAllRes = await supabase
-      .from("saved_funding_opportunities")
-      .select("opportunity_id")
-      .eq("user_id", user.id)
-      .limit(DEFAULT_MAX_NOFOS_PER_SYNC);
-    for (const row of savedAllRes.data ?? []) {
-      if (row.opportunity_id) savedOppIdsAll.add(row.opportunity_id);
-    }
-  }
-
-  const tabbed = (() => {
-    if (activeTab === "all") return sorted;
-    if (activeTab === "recommended") {
-      return [...sorted]
-        .filter((row) => isRecommendedMatch(row, inDays))
-        .sort((a, b) => scoreRecommendation(b, inDays) - scoreRecommendation(a, inDays));
-    }
-    if (activeTab === "closing_soon") {
-      const horizon = parseClosingDays(searchParams) ?? 90;
-      return sorted.filter((row) => inDays(row.close_date, horizon));
-    }
-    if (activeTab === "new_this_week") {
-      const lookback = parsePostedDays(searchParams) ?? 7;
-      return sortedByPostedDesc.filter((row) => postedWithinDays(row.posted_date, lookback));
-    }
-    if (activeTab === "large_awards") return sorted.filter((row) => looksLargeCollaborativeGrant(row));
-    if (activeTab === "esi_career") return sorted.filter((row) => isEsiCareerDevelopment(row));
-    if (activeTab === "investigator_initiated") return sorted.filter((row) => isInvestigatorInitiated(row));
-    if (activeTab === "foundations") return sorted.filter((row) => isFoundationOpportunity(row));
-    if (activeTab === "immunology_translational")
-      return sorted.filter((row) => isImmunologyTranslationalFit(row));
-    if (activeTab === "saved") return sorted.filter((row) => savedOppIdsAll.has(row.id));
-    return sorted;
-  })();
 
   const totalFiltered = tabbed.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / perPage));
@@ -360,15 +248,8 @@ export default async function FundingOpportunitiesPage({
   let rdsgOwners: Awaited<ReturnType<typeof fetchActiveRdsgOwnersForAlerts>> = [];
   if (user) {
     const sliceIds = pageSlice.map((o) => o.id);
-    const [searchesRes, onPageRes, matchedOnPageRes, rdsgOwnerRows] = await Promise.all([
+    const [searchesRes, matchedOnPageRes, rdsgOwnerRows] = await Promise.all([
       fetchSavedFundingSearchesForUser(supabase, user.id, 25),
-      sliceIds.length > 0
-        ? supabase
-            .from("saved_funding_opportunities")
-            .select("opportunity_id")
-            .eq("user_id", user.id)
-            .in("opportunity_id", sliceIds)
-        : Promise.resolve({ data: [] as { opportunity_id: string }[], error: null }),
       sliceIds.length > 0
         ? supabase
             .from("saved_opportunity_pi_matches")
@@ -391,7 +272,12 @@ export default async function FundingOpportunitiesPage({
         };
         const st = parseSavedFundingListState(r.state);
         if (!st) {
-          return { newMatchesSinceViewed: 0, newResultsRecent: 0, lastMatchedAt: null as string | null };
+          return {
+            newMatchesSinceViewed: 0,
+            newResultsRecent: 0,
+            lastMatchedAt: null as string | null,
+            totalMatches: 0,
+          };
         }
         return getSavedSearchMatchStats(supabase, st, {
           lastViewedAt: r.last_viewed_at ?? null,
@@ -415,6 +301,10 @@ export default async function FundingOpportunitiesPage({
       };
       const st = parseSavedFundingListState(r.state);
       const stats = matchStats[i]!;
+      const href = st ? fundingListHref(st) : "/funding-opportunities";
+      const currentListState = fundingListStateForBookmark(searchParamsToFundingListState(searchParams));
+      const activeSavedSearch = st != null && savedSearchMatchesCurrentState(currentListState, href);
+      const totalMatches = activeSavedSearch ? totalFiltered : stats.totalMatches;
       const frequency =
         r.alert_frequency === "instant" || r.alert_frequency === "daily" || r.alert_frequency === "weekly"
           ? r.alert_frequency
@@ -422,7 +312,7 @@ export default async function FundingOpportunitiesPage({
       savedSearchLinks.push({
         id: r.id,
         name: String(r.name ?? "Saved search"),
-        href: st ? fundingListHref(st) : "/funding-opportunities",
+        href,
         filterSummary: st ? formatSavedSearchFilterSummary(st) : "All opportunities",
         emailNotificationsEnabled: Boolean(r.email_notifications_enabled),
         alertFrequency: frequency,
@@ -434,33 +324,31 @@ export default async function FundingOpportunitiesPage({
         lastMatchedAt: stats.lastMatchedAt ?? r.last_matched_at ?? null,
         newMatchesSinceViewed: stats.newMatchesSinceViewed,
         newResultsRecent: stats.newResultsRecent,
+        totalMatches,
       });
     }
 
-    for (const row of onPageRes.data ?? []) {
-      if (row.opportunity_id) savedOppIdsOnPage.add(row.opportunity_id);
-    }
     for (const row of matchedOnPageRes.data ?? []) {
       if (row.opportunity_id) matchedOppIdsOnPage.add(row.opportunity_id);
     }
   }
 
-  const unscopedRows = (rows ?? []) as FundingListRow[];
+  const unscopedRows = rows;
 
-  const openCount = unscopedRows.filter((row) => fundingListRowScope(row, today) === "open").length;
-  const forecastedCount = unscopedRows.filter((row) => fundingListRowScope(row, today) === "forecasted").length;
+  const openCount = filtered.filter((row) => fundingListRowScope(row, today) === "open").length;
+  const forecastedCount = filtered.filter((row) => fundingListRowScope(row, today) === "forecasted").length;
   const activeInList = openCount + forecastedCount;
   const totalInList = unscopedRows.length;
-  const hasListFilters = hasAgencyFilter || qParam.trim().length > 0 || rdFiltersActive(rdFilterState);
+  const hasListFilters =
+    hasAgencyFilter || noDepartmentsSelected || qParam.trim().length > 0 || rdFiltersActive(rdFilterState);
   const totalOpportunities = hasListFilters ? totalInList : (fundingOppDbTotal ?? totalInList);
 
   const quickFilterCounts: FundingQuickFiltersCounts = {
-    matched: unscopedRows.filter((row) => isRecommendedMatch(row, inDays)).length,
-    saved: unscopedRows.filter((row) => savedOppIdsAll.has(row.id)).length,
+    matched: filtered.filter((row) => isRecommendedMatch(row, inDays)).length,
     closing: {
-      d30: unscopedRows.filter((row) => inDays(row.close_date, 30)).length,
-      d60: unscopedRows.filter((row) => inDays(row.close_date, 60)).length,
-      d90: unscopedRows.filter((row) => inDays(row.close_date, 90)).length,
+      d30: filtered.filter((row) => inDays(row.close_date, 30)).length,
+      d60: filtered.filter((row) => inDays(row.close_date, 60)).length,
+      d90: filtered.filter((row) => inDays(row.close_date, 90)).length,
     },
     scope: {
       all: activeInList,
@@ -468,20 +356,20 @@ export default async function FundingOpportunitiesPage({
       forecasted: forecastedCount,
     },
     new: {
-      week: unscopedRows.filter((row) => postedWithinDays(row.posted_date, 7)).length,
-      month: unscopedRows.filter((row) => postedWithinDays(row.posted_date, 30)).length,
-      quarter: unscopedRows.filter((row) => postedWithinDays(row.posted_date, 90)).length,
+      week: filtered.filter((row) => isRowNewWithinDays(row, 7)).length,
+      month: filtered.filter((row) => isRowNewWithinDays(row, 30)).length,
+      quarter: filtered.filter((row) => isRowNewWithinDays(row, 90)).length,
     },
-    esi: unscopedRows.filter((row) => isEsiCareerDevelopment(row)).length,
-    collaborative: unscopedRows.filter((row) => looksLargeCollaborativeGrant(row)).length,
-    investigatorInitiated: unscopedRows.filter((row) => isInvestigatorInitiated(row)).length,
-    foundations: unscopedRows.filter((row) => isFoundationOpportunity(row)).length,
+    esi: filtered.filter((row) => isEsiCareerDevelopment(row)).length,
+    collaborative: filtered.filter((row) => looksLargeCollaborativeGrant(row)).length,
+    investigatorInitiated: filtered.filter((row) => isInvestigatorInitiated(row)).length,
+    foundations: filtered.filter((row) => isFoundationOpportunity(row)).length,
   };
 
   const sortHrefs = Object.fromEntries(
     SORT_COLUMNS.map((column) => [
       column,
-      buildFundingListUrl(searchParams, nextColumnSort(column, sortState), activeTab),
+      buildFundingListUrl(searchParams, nextColumnSort(column, sortState)),
     ])
   ) as Record<FundingListSortKey, string>;
 
@@ -495,13 +383,16 @@ export default async function FundingOpportunitiesPage({
       },
       today
     );
-    const closingUrgency: 30 | 60 | 90 | null = inDays(row.close_date, 30)
-      ? 30
-      : inDays(row.close_date, 60)
-        ? 60
-        : inDays(row.close_date, 90)
-          ? 90
-          : null;
+    const closingUrgency: 30 | 60 | 90 | null =
+      bucket === "forecasted"
+        ? null
+        : inDays(row.close_date, 30)
+          ? 30
+          : inDays(row.close_date, 60)
+            ? 60
+            : inDays(row.close_date, 90)
+              ? 90
+              : null;
     let closeDateLabel = formatDate(row.close_date);
     if (closingUrgency) {
       closeDateLabel = `${closeDateLabel} · ≤${closingUrgency}d`;
@@ -511,7 +402,17 @@ export default async function FundingOpportunitiesPage({
       title: row.title,
       agencyDisplay: normalizeAgencyDisplayName(row.agency) ?? row.agency ?? "—",
       statusBucket: bucket,
-      postedDate: row.posted_date,
+      postedDate: resolveListPostedDate({
+        statusBucket: bucket,
+        postedDate: row.posted_date,
+        rawPayload: row.raw_payload_json,
+      }),
+      estimatedOpenDate: resolveEstimatedOpenDate({
+        statusBucket: bucket,
+        postedDate: row.posted_date,
+        rawPayload: row.raw_payload_json,
+      }),
+      updatedAt: resolveRowLastUpdatedAt(row),
       closeDate: row.close_date,
       closeDateLabel,
       closingUrgency,
@@ -521,7 +422,6 @@ export default async function FundingOpportunitiesPage({
         source_system: row.source_system,
         source_opportunity_id: row.source_opportunity_id,
       }),
-      initiallyBookmarked: savedOppIdsOnPage.has(row.id),
       isMatched: matchedOppIdsOnPage.has(row.id),
     };
   });
@@ -582,8 +482,19 @@ export default async function FundingOpportunitiesPage({
               </div>
             ) : null}
 
-            {error ? (
-              <p className="text-sm text-red-700/90">{error.message}</p>
+            {listTruncated ? (
+              <div className="rounded-xl border border-[var(--fo-border)] border-l-[3px] border-l-amber-500 bg-[var(--fo-paper)] px-5 py-4 text-sm font-medium leading-relaxed text-[var(--fo-ink-body)] shadow-[var(--fo-shadow-surface)]">
+                <p className="font-bold text-[var(--fo-title)]">List truncated</p>
+                <p className="mt-1 text-[0.8125rem]">
+                  More than {FUNDING_LIST_FETCH_MAX_ROWS.toLocaleString()} opportunities match your filters. Quick
+                  filters and counts reflect the first {FUNDING_LIST_FETCH_MAX_ROWS.toLocaleString()} rows only —
+                  narrow department or keyword filters to see a complete set.
+                </p>
+              </div>
+            ) : null}
+
+            {listError ? (
+              <p className="text-sm text-red-700/90">{listError}</p>
             ) : (
               <section className="fo-panel">
                 <div className="overflow-hidden rounded-t-[var(--fo-radius-lg)] border-b border-[var(--fo-border)] bg-[var(--fo-paper)] px-5 py-3 sm:px-6">
@@ -617,11 +528,13 @@ export default async function FundingOpportunitiesPage({
                       title="No funding opportunities"
                       className="rounded-xl border border-dashed border-[var(--fo-border)] bg-[var(--fo-paper)]"
                       description={
-                        (rows?.length ?? 0) > 0
+                        rows.length > 0
                           ? "Nothing in this view matches your filters. Try changing opportunity scope."
-                          : hasAgencyFilter
-                            ? "No stored notices for the selected departments. Clear filters or choose broader departments."
-                            : "Run a Simpler sync after setting the API key."
+                          : noDepartmentsSelected
+                            ? "No departments are selected. Check at least one department, or choose All to search across every agency."
+                            : hasAgencyFilter
+                              ? "No stored notices for the selected departments. Clear filters or choose broader departments."
+                              : "Run a Simpler sync after setting the API key."
                       }
                     />
                   </div>

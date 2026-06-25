@@ -97,14 +97,14 @@ function chk(
   );
 }
 
-/** First row: checked when no specific filters; choosing it clears the group. */
+/** First row: checked when the whole group is selected; toggling updates the group. */
 function MultiGroupAnyRow({
-  empty,
-  onAny,
+  checked,
+  onToggle,
   editorial,
 }: {
-  empty: boolean;
-  onAny: () => void;
+  checked: boolean;
+  onToggle: (checked: boolean) => void;
   editorial: boolean;
 }) {
   return (
@@ -115,11 +115,8 @@ function MultiGroupAnyRow({
     >
       <input
         type="checkbox"
-        checked={empty}
-        readOnly={empty}
-        onChange={(e) => {
-          if (e.target.checked) onAny();
-        }}
+        checked={checked}
+        onChange={(e) => onToggle(e.target.checked)}
       />
       All
     </label>
@@ -136,8 +133,8 @@ export function ResearchDevFiltersFields({
   legacyAgencies,
   toggleDepartment,
   toggleDepartmentSub,
-  clearDepartmentFilter,
-  noDepartmentFilter,
+  onAllDepartmentsToggle,
+  allDepartmentsSelected,
   editorial = false,
 }: {
   scope: FundingListScope;
@@ -149,8 +146,8 @@ export function ResearchDevFiltersFields({
   legacyAgencies: string[];
   toggleDepartment: (id: string, checked: boolean) => void;
   toggleDepartmentSub: (deptId: string, subId: string, checked: boolean) => void;
-  clearDepartmentFilter: () => void;
-  noDepartmentFilter: boolean;
+  onAllDepartmentsToggle: (selected: boolean) => void;
+  allDepartmentsSelected: boolean;
   editorial?: boolean;
 }) {
   const dBox = editorial
@@ -195,8 +192,8 @@ export function ResearchDevFiltersFields({
         <FilterDisclosureSummary editorial={editorial}>Department</FilterDisclosureSummary>
         <div className="mt-2 max-h-[min(58vh,28rem)] space-y-2 overflow-y-auto pr-0.5">
           <MultiGroupAnyRow
-            empty={noDepartmentFilter}
-            onAny={clearDepartmentFilter}
+            checked={allDepartmentsSelected}
+            onToggle={onAllDepartmentsToggle}
             editorial={editorial}
           />
           {legacyAgencies.length > 0 ? (
@@ -212,9 +209,9 @@ export function ResearchDevFiltersFields({
           {TOP_LEVEL_DEPARTMENTS.map((d) => {
             const subs = getSubcomponentsForDepartment(d.id);
             const selected = departmentSubs[d.id] ?? [];
-            const deptSelected = noDepartmentFilter || departments.includes(d.id);
+            const deptSelected = allDepartmentsSelected || departments.includes(d.id);
             const isSubChecked = (subId: string) => {
-              if (noDepartmentFilter) return true;
+              if (allDepartmentsSelected) return true;
               if (!deptSelected) return false;
               if (subs.length === 0) return false;
               if (selected.length === 0) return true;
@@ -267,8 +264,10 @@ export function ResearchDevFiltersFields({
         <FilterDisclosureSummary editorial={editorial}>NIH institute / center</FilterDisclosureSummary>
         <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
           <MultiGroupAnyRow
-            empty={rd.nihIc.length === 0}
-            onAny={() => patchRd((p) => ({ ...p, nihIc: [] }))}
+            checked={rd.nihIc.length === 0}
+            onToggle={(checked) => {
+              if (checked) patchRd((p) => ({ ...p, nihIc: [] }));
+            }}
             editorial={editorial}
           />
           <div className="grid grid-cols-2 gap-1">
@@ -286,8 +285,10 @@ export function ResearchDevFiltersFields({
         <FilterDisclosureSummary editorial={editorial}>Activity code family</FilterDisclosureSummary>
         <div className="mt-2 space-y-1">
           <MultiGroupAnyRow
-            empty={rd.activityFamilies.length === 0}
-            onAny={() => patchRd((p) => ({ ...p, activityFamilies: [] }))}
+            checked={rd.activityFamilies.length === 0}
+            onToggle={(checked) => {
+              if (checked) patchRd((p) => ({ ...p, activityFamilies: [] }));
+            }}
             editorial={editorial}
           />
           <div className="grid grid-cols-3 gap-1 sm:grid-cols-4">
@@ -326,8 +327,10 @@ export function ResearchDevFiltersFields({
         <FilterDisclosureSummary editorial={editorial}>Announcement shape</FilterDisclosureSummary>
         <div className="mt-2 flex flex-col gap-1">
           <MultiGroupAnyRow
-            empty={rd.announcement.length === 0}
-            onAny={() => patchRd((p) => ({ ...p, announcement: [] }))}
+            checked={rd.announcement.length === 0}
+            onToggle={(checked) => {
+              if (checked) patchRd((p) => ({ ...p, announcement: [] }));
+            }}
             editorial={editorial}
           />
           {(
@@ -360,8 +363,10 @@ export function ResearchDevFiltersFields({
         <FilterDisclosureSummary editorial={editorial}>Research pathway (keyword)</FilterDisclosureSummary>
         <div className="mt-2 flex flex-col gap-1">
           <MultiGroupAnyRow
-            empty={rd.pathway.length === 0}
-            onAny={() => patchRd((p) => ({ ...p, pathway: [] }))}
+            checked={rd.pathway.length === 0}
+            onToggle={(checked) => {
+              if (checked) patchRd((p) => ({ ...p, pathway: [] }));
+            }}
             editorial={editorial}
           />
           {(
@@ -399,8 +404,10 @@ export function ResearchDevFiltersFields({
         </FilterDisclosureSummary>
         <div className="mt-2 flex flex-col gap-1">
           <MultiGroupAnyRow
-            empty={rd.investigatorTags.length === 0}
-            onAny={() => patchRd((p) => ({ ...p, investigatorTags: [] }))}
+            checked={rd.investigatorTags.length === 0}
+            onToggle={(checked) => {
+              if (checked) patchRd((p) => ({ ...p, investigatorTags: [] }));
+            }}
             editorial={editorial}
           />
           {(
@@ -434,8 +441,10 @@ export function ResearchDevFiltersFields({
           <div className={upperMuted}>Mechanism</div>
           <div className="flex flex-col gap-1">
             <MultiGroupAnyRow
-              empty={rd.mechanismTypes.length === 0}
-              onAny={() => patchRd((p) => ({ ...p, mechanismTypes: [] }))}
+              checked={rd.mechanismTypes.length === 0}
+              onToggle={(checked) => {
+                if (checked) patchRd((p) => ({ ...p, mechanismTypes: [] }));
+              }}
               editorial={editorial}
             />
             {(
@@ -465,8 +474,10 @@ export function ResearchDevFiltersFields({
           <div className={upperMuted}>Collaboration</div>
           <div className="flex flex-col gap-1">
             <MultiGroupAnyRow
-              empty={rd.collaborations.length === 0}
-              onAny={() => patchRd((p) => ({ ...p, collaborations: [] }))}
+              checked={rd.collaborations.length === 0}
+              onToggle={(checked) => {
+                if (checked) patchRd((p) => ({ ...p, collaborations: [] }));
+              }}
               editorial={editorial}
             />
             {(
@@ -499,8 +510,10 @@ export function ResearchDevFiltersFields({
         <FilterDisclosureSummary editorial={editorial}>Human subjects signal</FilterDisclosureSummary>
         <div className="mt-2 flex flex-col gap-1">
           <MultiGroupAnyRow
-            empty={rd.humanSubjects.length === 0}
-            onAny={() => patchRd((p) => ({ ...p, humanSubjects: [] }))}
+            checked={rd.humanSubjects.length === 0}
+            onToggle={(checked) => {
+              if (checked) patchRd((p) => ({ ...p, humanSubjects: [] }));
+            }}
             editorial={editorial}
           />
           {(

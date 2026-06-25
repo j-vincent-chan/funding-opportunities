@@ -3,30 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  dismissFundingOpportunityAction,
-  toggleSavedFundingOpportunityAction,
-} from "@/app/actions/funding-search-saves";
+import { dismissFundingOpportunityAction } from "@/app/actions/funding-search-saves";
 import { openExternalFundingUrl } from "@/lib/funding-opportunities/source-url";
 
-const BOOKMARK_FILLED = "#BA7517";
 const MATCH_PURPLE = "#534AB7";
 const ICON_16 = "h-4 w-4 shrink-0";
 const ICON_12 = "h-3 w-3 shrink-0";
-
-function BookmarkIcon({ filled }: { filled: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" className={ICON_16} aria-hidden>
-      <path
-        d="M4 2.5h8v11l-4-2.5-4 2.5v-11z"
-        fill={filled ? "currentColor" : "none"}
-        stroke="currentColor"
-        strokeWidth={1.5}
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function SparklesIcon() {
   return (
@@ -106,26 +88,19 @@ export function FundingListRowActions({
   opportunityId,
   title,
   sourceUrl,
-  initiallyBookmarked,
   isMatched,
   loggedIn,
 }: {
   opportunityId: string;
   title: string;
   sourceUrl: string | null;
-  initiallyBookmarked: boolean;
   isMatched: boolean;
   loggedIn: boolean;
 }) {
   const router = useRouter();
-  const [bookmarked, setBookmarked] = useState(initiallyBookmarked);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setBookmarked(initiallyBookmarked);
-  }, [initiallyBookmarked]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -139,8 +114,7 @@ export function FundingListRowActions({
   }, [menuOpen]);
 
   const mailto = `mailto:?subject=${encodeURIComponent(`Funding opportunity: ${title}`)}&body=${encodeURIComponent(`Review this opportunity: /funding-opportunities/${opportunityId}`)}`;
-  const matchHref =
-    isMatched || bookmarked ? `/match/saved/${opportunityId}` : "/match/saved";
+  const matchHref = isMatched ? `/match/saved/${opportunityId}` : "/match/saved";
 
   return (
     <div className="flex shrink-0 items-center justify-end gap-[6px]">
@@ -161,33 +135,6 @@ export function FundingListRowActions({
           <SparklesIcon />
           Match
         </Link>
-      )}
-
-      {loggedIn ? (
-        <button
-          type="button"
-          disabled={pending}
-          aria-label={bookmarked ? "Remove bookmark" : "Bookmark notice"}
-          aria-pressed={bookmarked}
-          title={bookmarked ? "Bookmarked — click to remove" : "Bookmark notice"}
-          className={iconButtonClass()}
-          style={bookmarked ? { color: BOOKMARK_FILLED } : undefined}
-          onClick={() => {
-            startTransition(async () => {
-              const result = await toggleSavedFundingOpportunityAction(opportunityId);
-              if (!result.ok) {
-                window.alert(result.error);
-                return;
-              }
-              setBookmarked(result.saved);
-              router.refresh();
-            });
-          }}
-        >
-          <BookmarkIcon filled={bookmarked} />
-        </button>
-      ) : (
-        <span className="inline-block h-[26px] w-[26px] shrink-0" aria-hidden />
       )}
 
       <div ref={menuRef} className="relative">

@@ -10,14 +10,18 @@ export type FundingListScopeRowInput = {
 
 export function fundingListRowScope(r: FundingListScopeRowInput, today: Date): FundingListRowBucket {
   const closedStatus = r.status === "closed" || r.status === "archived";
+  const isFc = r.forecasted === true || r.status === "forecasted";
+
+  if (closedStatus) return "closed";
+  // Estimated close on forecasted notices is not a hard deadline — keep them forecasted.
+  if (isFc) return "forecasted";
+
   let pastClose = false;
   if (r.close_date) {
     const d = new Date(r.close_date);
     pastClose = !Number.isNaN(d.getTime()) && d < today;
   }
-  if (closedStatus || pastClose) return "closed";
-  const isFc = r.forecasted === true || r.status === "forecasted";
-  if (isFc) return "forecasted";
+  if (pastClose) return "closed";
   return "open";
 }
 

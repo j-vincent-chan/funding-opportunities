@@ -13,7 +13,6 @@ import {
   SidebarIconPanelClose,
   SidebarIconPanelOpen,
   SidebarIconPortfolio,
-  SidebarIconSavedList,
   SidebarIconSearch,
   SidebarIconSettings,
   SidebarIconSignOut,
@@ -57,12 +56,6 @@ const sections: { heading: string; items: NavItem[] }[] = [
         href: "/match/saved",
         label: "Matchmaker",
         Icon: SidebarIconMatch,
-        isActive: (p) => p === "/match" || p.startsWith("/match/saved"),
-      },
-      {
-        href: "/match/saved",
-        label: "Saved Lists",
-        Icon: SidebarIconSavedList,
         isActive: (p) => p === "/match" || p.startsWith("/match/saved"),
       },
       {

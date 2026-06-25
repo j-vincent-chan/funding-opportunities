@@ -145,7 +145,7 @@ export async function loadFundingOpportunityPeekAction(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const data = await loadFundingOpportunityPeek(supabase, opportunityId, user?.id ?? null);
+  const data = await loadFundingOpportunityPeek(supabase, opportunityId);
   if (!data) return { ok: false, error: "Opportunity not found." };
   return { ok: true, data };
 }

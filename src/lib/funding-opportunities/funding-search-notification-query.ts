@@ -7,9 +7,11 @@ import {
 } from "@/lib/funding-opportunities/rd-list-filters";
 import {
   fundingListRowEligibleForEmailNotification,
+  fundingListRowMatchesScope,
   fundingListRowScope,
 } from "@/lib/funding-opportunities/funding-list-row-scope";
 import type { FundingListClientState } from "@/lib/funding-opportunities/funding-list-url";
+import { DEFAULT_MAX_NOFOS_PER_SYNC } from "@/lib/services/simpler-grants-sync";
 
 /** Columns required for list filters + RD filters + email row bucket. */
 export const FUNDING_NOTIFICATION_SELECT =
@@ -51,6 +53,7 @@ export type SavedSearchMatchStats = {
   newResultsRecent: number;
   newMatchesSinceViewed: number;
   lastMatchedAt: string | null;
+  totalMatches: number;
 };
 
 export async function countRecentMatchingOpportunitiesForSavedSearch(
@@ -80,12 +83,10 @@ export async function getSavedSearchMatchStats(
   const options: SavedSearchMatchQueryOptions = {
     includeForecasted: input.includeForecasted ?? true,
   };
-  const { rows: recentRows } = await fetchRecentMatchingOpportunitiesForSavedSearch(
-    supabase,
-    state,
-    recentSince,
-    options
-  );
+  const [{ rows: recentRows }, { rows: totalRows }] = await Promise.all([
+    fetchRecentMatchingOpportunitiesForSavedSearch(supabase, state, recentSince, options),
+    fetchMatchingOpportunitiesForSavedSearch(supabase, state),
+  ]);
 
   const viewedSince = input.lastViewedAt?.trim() || null;
   let newMatchesSinceViewed = recentRows.length;
@@ -103,7 +104,28 @@ export async function getSavedSearchMatchStats(
     newResultsRecent: recentRows.length,
     newMatchesSinceViewed,
     lastMatchedAt,
+    totalMatches: totalRows.length,
   };
+}
+
+type SavedSearchMatchFetchOptions = SavedSearchMatchQueryOptions & {
+  updatedSince?: string;
+  fetchLimit?: number;
+};
+
+/**
+ * All opportunities matching keyword/agency/NIH IC + RD filters and the saved list scope
+ * (same filters as the funding list, without the recent-update window used for alerts).
+ */
+export async function fetchMatchingOpportunitiesForSavedSearch(
+  supabase: SupabaseClient,
+  state: FundingListClientState,
+  options?: Pick<SavedSearchMatchFetchOptions, "fetchLimit">
+): Promise<{ rows: FundingNotificationCandidateRow[]; warning?: string }> {
+  return runSavedSearchMatchQuery(supabase, state, {
+    fetchLimit: options?.fetchLimit ?? DEFAULT_MAX_NOFOS_PER_SYNC,
+    rowFilter: (bucket) => fundingListRowMatchesScope(bucket, state.scope),
+  });
 }
 
 /**
@@ -117,10 +139,30 @@ export async function fetchRecentMatchingOpportunitiesForSavedSearch(
   options?: SavedSearchMatchQueryOptions
 ): Promise<{ rows: FundingNotificationCandidateRow[]; warning?: string }> {
   const includeForecasted = options?.includeForecasted !== false;
+  return runSavedSearchMatchQuery(supabase, state, {
+    updatedSince: sinceIso,
+    fetchLimit: NOTIFICATION_FETCH_LIMIT,
+    rowFilter: (bucket) => {
+      if (!includeForecasted && bucket === "forecasted") return false;
+      return fundingListRowEligibleForEmailNotification(bucket, state.scope);
+    },
+  });
+}
+
+async function runSavedSearchMatchQuery(
+  supabase: SupabaseClient,
+  state: FundingListClientState,
+  options: {
+    updatedSince?: string;
+    fetchLimit: number;
+    rowFilter: (bucket: ReturnType<typeof fundingListRowScope>) => boolean;
+  }
+): Promise<{ rows: FundingNotificationCandidateRow[]; warning?: string }> {
   const agencySelection = {
     departments: state.departments,
     departmentSubs: state.departmentSubs,
     legacyAgencies: state.legacyAgencies,
+    noDepartmentsSelected: state.noDepartmentsSelected,
   };
   const rdWithoutNihIc = { ...state.rd, nihIc: [] as string[] };
   const today = new Date(new Date().toDateString());
@@ -131,12 +173,12 @@ export async function fetchRecentMatchingOpportunitiesForSavedSearch(
       ? FUNDING_NOTIFICATION_SELECT
       : "id, title, agency, opportunity_number, close_date, posted_date, funding_instrument, status, forecasted, updated_at";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q: any = supabase
-      .from("funding_opportunities")
-      .select(selectStr)
-      .gte("updated_at", sinceIso)
-      .order("updated_at", { ascending: false })
-      .limit(NOTIFICATION_FETCH_LIMIT);
+    let q: any = supabase.from("funding_opportunities").select(selectStr).limit(options.fetchLimit);
+    if (options.updatedSince) {
+      q = q.gte("updated_at", options.updatedSince).order("updated_at", { ascending: false });
+    } else {
+      q = q.order("posted_date", { ascending: false, nullsFirst: false });
+    }
     q = applyFundingListOrFilters(q, state.q, agencySelection, state.rd.nihIc);
     if (rdFilters && rdFiltersActive(rdWithoutNihIc)) {
       q = applyRdFiltersToFundingQuery(q, rdWithoutNihIc);
@@ -164,8 +206,7 @@ export async function fetchRecentMatchingOpportunitiesForSavedSearch(
   const rows: FundingNotificationCandidateRow[] = [];
   for (const r of raw) {
     const bucket = fundingListRowScope(r, today);
-    if (!includeForecasted && bucket === "forecasted") continue;
-    if (!fundingListRowEligibleForEmailNotification(bucket, state.scope)) continue;
+    if (!options.rowFilter(bucket)) continue;
     rows.push(r);
   }
 

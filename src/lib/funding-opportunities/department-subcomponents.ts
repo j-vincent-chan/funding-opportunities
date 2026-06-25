@@ -198,24 +198,44 @@ export const SUBCOMPONENTS_BY_DEPT: Record<string, readonly SubcomponentDef[]> =
   ],
   dod: [
     {
-      id: "army",
-      label: "Department of the Army",
-      patterns: ["Department of the Army", "U.S. Army"],
-    },
-    {
-      id: "navy",
-      label: "Department of the Navy",
-      patterns: ["Department of the Navy", "U.S. Navy"],
-    },
-    {
-      id: "air_force",
-      label: "Department of the Air Force",
-      patterns: ["Department of the Air Force", "U.S. Air Force"],
-    },
-    {
       id: "darpa",
       label: "Defense Advanced Research Projects Agency",
       patterns: ["Defense Advanced Research Projects", "DARPA"],
+    },
+    {
+      id: "dha",
+      label: "Defense Health Agency",
+      patterns: ["Defense Health Agency"],
+    },
+    {
+      id: "dhaca",
+      label: "Defense Health Agency Contracting Activity",
+      patterns: [
+        "Defense Health Agency Contracting",
+        "DHACA",
+        "Congressionally Directed Medical Research",
+        "CDMRP",
+      ],
+    },
+    {
+      id: "onr",
+      label: "Office of Naval Research",
+      patterns: ["Office of Naval Research", "ONR"],
+    },
+    {
+      id: "afosr",
+      label: "Air Force Office of Scientific Research",
+      patterns: ["Air Force Office of Scientific Research", "AFOSR", "Air Force Research Laboratory", "AFRL"],
+    },
+    {
+      id: "aro",
+      label: "Army Research Office",
+      patterns: ["Army Research Office", "ARO"],
+    },
+    {
+      id: "mda",
+      label: "Missile Defense Agency",
+      patterns: ["Missile Defense Agency", "MDA"],
     },
     {
       id: "dtra",
@@ -223,9 +243,14 @@ export const SUBCOMPONENTS_BY_DEPT: Record<string, readonly SubcomponentDef[]> =
       patterns: ["Defense Threat Reduction Agency", "DTRA"],
     },
     {
-      id: "cdmrp",
-      label: "Congressionally Directed Medical Research Programs",
-      patterns: ["Congressionally Directed Medical Research", "CDMRP"],
+      id: "dla",
+      label: "Defense Logistics Agency",
+      patterns: ["Defense Logistics Agency", "DLA"],
+    },
+    {
+      id: "disa",
+      label: "Defense Information Systems Agency",
+      patterns: ["Defense Information Systems Agency", "DISA"],
     },
   ],
   treasury: [
@@ -495,8 +520,24 @@ export function getSubcomponentsForDepartment(deptId: string): readonly Subcompo
   return SUBCOMPONENTS_BY_DEPT[deptId] ?? [];
 }
 
+/** Map retired DoD sub-ids from older saved searches / URLs to current ids. */
+const LEGACY_DOD_SUB_IDS: Record<string, string> = {
+  army: "aro",
+  navy: "onr",
+  air_force: "afosr",
+  cdmrp: "dhaca",
+};
+
+export function normalizeDepartmentSubId(deptId: string, subId: string): string {
+  if (deptId === "dod" && LEGACY_DOD_SUB_IDS[subId]) {
+    return LEGACY_DOD_SUB_IDS[subId];
+  }
+  return subId;
+}
+
 export function isKnownDepartmentSubId(deptId: string, subId: string): boolean {
-  return getSubcomponentsForDepartment(deptId).some((c) => c.id === subId);
+  const normalized = normalizeDepartmentSubId(deptId, subId);
+  return getSubcomponentsForDepartment(deptId).some((c) => c.id === normalized);
 }
 
 /** @deprecated use isKnownDepartmentSubId("hhs", id) */

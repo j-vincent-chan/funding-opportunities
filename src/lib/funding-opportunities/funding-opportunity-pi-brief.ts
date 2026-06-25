@@ -208,17 +208,21 @@ export function buildPiDecisionBrief(
 ): PiDecisionBrief {
   const title = coercePlainTextFromUnknown(fo.title) || "";
   const description = coercePlainTextFromUnknown(fo.description) || "";
-  const daysToClose = daysUntilClose(fo.close_date ?? null, today);
-  const deadlineUrgency = deadlineUrgencyFromDays(daysToClose, statusBucket);
+  const daysToClose =
+    statusBucket === "forecasted" ? null : daysUntilClose(fo.close_date ?? null, today);
+  const deadlineUrgency =
+    statusBucket === "forecasted" ? "none" : deadlineUrgencyFromDays(daysToClose, statusBucket);
   const filterRow = filterRowFromOpportunity(fo, title);
   const investigatorInitiated = isInvestigatorInitiated(filterRow);
   const earlyCareerFriendly = isEsiCareerDevelopment(filterRow);
   const largeCollaborative = looksLargeCollaborativeGrant(filterRow);
 
   const highlights: string[] = [];
-  if (deadlineUrgency === "within_30") highlights.push("Closing within 30 days — act soon.");
-  else if (deadlineUrgency === "within_60") highlights.push("Closing within 60 days.");
-  else if (deadlineUrgency === "within_90") highlights.push("Closing within 90 days.");
+  if (statusBucket !== "forecasted") {
+    if (deadlineUrgency === "within_30") highlights.push("Closing within 30 days — act soon.");
+    else if (deadlineUrgency === "within_60") highlights.push("Closing within 60 days.");
+    else if (deadlineUrgency === "within_90") highlights.push("Closing within 90 days.");
+  }
   if (earlyCareerFriendly) highlights.push("Explicitly targets early-career or training-stage investigators.");
   if (investigatorInitiated) highlights.push("Investigator-initiated research mechanism.");
   if (largeCollaborative) highlights.push("Large award or cooperative / multi-PI structure.");

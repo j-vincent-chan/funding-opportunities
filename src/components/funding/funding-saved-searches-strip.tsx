@@ -33,6 +33,7 @@ export type SavedSearchLink = {
   lastMatchedAt?: string | null;
   newMatchesSinceViewed: number;
   newResultsRecent: number;
+  totalMatches: number;
 };
 
 function SavedSearchesLabelIcon() {
@@ -70,10 +71,15 @@ export function isActiveSavedSearch(current: FundingListClientState, savedHref: 
   return savedSearchMatchesCurrentState(current, savedHref);
 }
 
-function MatchCountBadge({ count }: { count: number }) {
+function MatchCountBadge({ count, hasNew }: { count: number; hasNew?: boolean }) {
   if (count > 0) {
     return (
-      <span className="shrink-0 rounded-full bg-[#EEEDFE] px-1.5 py-px text-[11px] font-bold leading-tight text-[#534AB7]">
+      <span
+        className={[
+          "shrink-0 rounded-full px-1.5 py-px text-[11px] font-bold leading-tight tabular-nums",
+          hasNew ? "bg-[#EEEDFE] text-[#534AB7]" : "text-[var(--fo-ink-faint)]",
+        ].join(" ")}
+      >
         {count}
       </span>
     );
@@ -213,7 +219,10 @@ export function FundingSavedSearchesStrip({
                 >
                   <BellIcon alertsOn={search.emailNotificationsEnabled} />
                   <span className="min-w-0 truncate">{search.name}</span>
-                  <MatchCountBadge count={search.newMatchesSinceViewed} />
+                  <MatchCountBadge
+                    count={search.totalMatches}
+                    hasNew={search.newMatchesSinceViewed > 0}
+                  />
                 </button>
                 <button
                   type="button"

@@ -17,13 +17,14 @@ export type FundingListResultsRow = {
   agencyDisplay: string;
   statusBucket: FundingListRowBucket;
   postedDate: string | null;
+  estimatedOpenDate: string | null;
+  updatedAt: string | null;
   closeDate: string | null;
   closeDateLabel: string;
   closingUrgency: 30 | 60 | 90 | null;
   fundingInstrument: string | null;
   activityFamilies: string[] | null;
   sourceUrl: string | null;
-  initiallyBookmarked: boolean;
   isMatched: boolean;
 };
 
@@ -75,6 +76,53 @@ function closingUrgencyClass(days: 30 | 60 | 90 | null): string {
   return "";
 }
 
+function formatUpdatedDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const day = iso.slice(0, 10);
+  return formatDate(day);
+}
+
+/** Label + value stack for table date columns (matches peek panel MetaField rhythm). */
+function TableDateStack({
+  items,
+}: {
+  items: Array<{ label: string; value: string; highlight?: boolean }>;
+}) {
+  return (
+    <dl className="space-y-2.5">
+      {items.map((item) => (
+        <div key={item.label}>
+          <dt className="text-[0.62rem] font-bold uppercase tracking-[0.1em] text-[var(--fo-ink-muted)]">
+            {item.label}
+          </dt>
+          <dd
+            className={`mt-0.5 tabular-nums leading-snug ${
+              item.highlight
+                ? "text-sm font-semibold text-[var(--fo-title)]"
+                : "text-sm font-medium text-[var(--fo-ink-body)]"
+            }`}
+          >
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ForecastedOpenHint({ date }: { date: string | null }) {
+  return (
+    <div className="rounded-lg border border-[color-mix(in_srgb,var(--fo-warn-border)_45%,transparent)] bg-[color-mix(in_srgb,var(--fo-warn-bg)_38%,var(--fo-paper))] px-2.5 py-2">
+      <p className="text-[0.62rem] font-bold uppercase tracking-[0.1em] text-[var(--fo-warn-text)]">
+        Est. open
+      </p>
+      <p className="mt-0.5 text-sm font-semibold tabular-nums leading-snug text-[var(--fo-title)]">
+        {formatDate(date)}
+      </p>
+    </div>
+  );
+}
+
 export function FundingListResultsTable({
   rows,
   loggedIn,
@@ -99,8 +147,8 @@ export function FundingListResultsTable({
         <colgroup>
           <col className={showOptionalColumns ? "w-[28%]" : "w-[40%]"} />
           <col className="w-[15%]" />
-          <col className="w-[10%]" />
-          <col className="w-[10%]" />
+          <col className="w-[12%]" />
+          <col className="w-[11%]" />
           <col className="w-[10%]" />
           {showInstrument ? <col className="w-[12%]" /> : null}
           {showActivity ? <col className="w-[12%]" /> : null}
@@ -180,11 +228,34 @@ export function FundingListResultsTable({
                 <td className="px-5 py-5 align-top text-sm font-medium leading-snug text-[var(--fo-ink-body)]">
                   {row.agencyDisplay}
                 </td>
-                <td className="whitespace-nowrap px-5 py-5 align-top">
-                  <FundingOpportunityStatusPill status={row.statusBucket} size="lg" />
+                <td className="min-w-[8.5rem] px-5 py-5 align-top">
+                  <div className="flex flex-col gap-2.5">
+                    <FundingOpportunityStatusPill status={row.statusBucket} size="lg" />
+                    {row.statusBucket === "forecasted" ? (
+                      <ForecastedOpenHint date={row.estimatedOpenDate} />
+                    ) : null}
+                  </div>
                 </td>
-                <td className="whitespace-nowrap px-5 py-5 align-top tabular-nums text-sm font-medium text-[var(--fo-ink-muted)]">
-                  {formatDate(row.postedDate)}
+                <td className="min-w-[7.5rem] px-5 py-5 align-top">
+                  <TableDateStack
+                    items={
+                      row.statusBucket === "forecasted"
+                        ? [
+                            {
+                              label: "Last updated",
+                              value: formatUpdatedDate(row.updatedAt),
+                              highlight: row.updatedAt != null,
+                            },
+                          ]
+                        : [
+                            {
+                              label: "Posted",
+                              value: formatDate(row.postedDate),
+                              highlight: row.postedDate != null,
+                            },
+                          ]
+                    }
+                  />
                 </td>
                 <td
                   className={`whitespace-nowrap px-5 py-5 align-top tabular-nums text-sm font-medium text-[var(--fo-ink-muted)] ${closingUrgencyClass(row.closingUrgency)}`}
@@ -211,7 +282,6 @@ export function FundingListResultsTable({
                     opportunityId={row.id}
                     title={row.title}
                     sourceUrl={row.sourceUrl}
-                    initiallyBookmarked={row.initiallyBookmarked}
                     isMatched={row.isMatched}
                     loggedIn={loggedIn}
                   />
