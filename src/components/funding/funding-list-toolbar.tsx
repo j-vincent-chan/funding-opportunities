@@ -45,10 +45,14 @@ export function FundingListToolbar({
   const [loadedSavedSearchId, setLoadedSavedSearchId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (currentState.savedSearchId) {
+      setLoadedSavedSearchId(currentState.savedSearchId);
+      return;
+    }
     if (activeSearch) {
       setLoadedSavedSearchId(activeSearch.id);
     }
-  }, [activeSearch]);
+  }, [activeSearch, currentState.savedSearchId]);
 
   return (
     <div className="relative z-20 border-b border-[var(--fo-divider)] bg-[var(--fo-paper-2)]">

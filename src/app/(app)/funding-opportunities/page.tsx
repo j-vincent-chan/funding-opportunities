@@ -61,7 +61,7 @@ import {
   formatSavedSearchFilterSummary,
   fundingListStateForBookmark,
   parseSavedFundingListState,
-  savedSearchMatchesCurrentState,
+  savedSearchStillActive,
 } from "@/lib/funding-opportunities/saved-funding-list-state";
 import { fetchSavedFundingSearchesForUser } from "@/lib/funding-opportunities/saved-funding-search-query";
 import { fetchActiveRdsgOwnersForAlerts } from "@/lib/funding-opportunities/saved-search-alert-recipients";
@@ -303,7 +303,10 @@ export default async function FundingOpportunitiesPage({
       const stats = matchStats[i]!;
       const href = st ? fundingListHref(st) : "/funding-opportunities";
       const currentListState = fundingListStateForBookmark(searchParamsToFundingListState(searchParams));
-      const activeSavedSearch = st != null && savedSearchMatchesCurrentState(currentListState, href);
+      const activeSavedSearch =
+        st != null &&
+        (currentListState.savedSearchId === r.id ||
+          savedSearchStillActive(currentListState, href, r.id));
       const totalMatches = activeSavedSearch ? totalFiltered : stats.totalMatches;
       const frequency =
         r.alert_frequency === "instant" || r.alert_frequency === "daily" || r.alert_frequency === "weekly"

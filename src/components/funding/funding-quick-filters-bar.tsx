@@ -217,7 +217,7 @@ export function FundingQuickFiltersBar({
       router.push(
         fundingListHref({
           ...state,
-          ...(options?.resetSidebar ? defaultSidebarFilterPatch() : {}),
+          ...(options?.resetSidebar && !state.savedSearchId ? defaultSidebarFilterPatch() : {}),
           ...patch,
           page: DEFAULT_FUNDING_LIST_PAGE,
         })

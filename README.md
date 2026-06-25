@@ -80,7 +80,9 @@ See `docs/IMPLEMENTATION_PLAN_MATCHING.md` for historical design notes (some ite
 
 ## Vercel deployment
 
-1. Import the repo into Vercel.
+Production project: **prospera** → [https://prospera-taupe.vercel.app](https://prospera-taupe.vercel.app)
+
+1. Import the repo into Vercel as the **prospera** project (one project only — do not create a second deployment for the same repo).
 2. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 3. Add server-only secrets (`SIMPLER_GRANTS_API_KEY`, `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`) only where those routes/scripts run.
 4. Add your site URL under Supabase **Authentication → URL Configuration** if you use email links.

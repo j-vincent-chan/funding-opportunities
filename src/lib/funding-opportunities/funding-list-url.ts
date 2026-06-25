@@ -16,6 +16,17 @@ import {
 /** URL param for Notion-style side peek panel on the funding list. */
 export const FUNDING_PEEK_PARAM = "peek";
 
+/** URL param pinning which saved search is active (chip highlight / context bar). */
+export const FUNDING_SAVED_SEARCH_PARAM = "saved";
+
+export function parseSavedSearchId(searchParams: SearchParams): string | null {
+  const raw = firstStringParam(searchParams[FUNDING_SAVED_SEARCH_PARAM]).trim();
+  if (!raw) return null;
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw);
+  return uuid ? raw : null;
+}
+
 export function parsePeekOpportunityId(searchParams: SearchParams): string | null {
   const raw = firstStringParam(searchParams[FUNDING_PEEK_PARAM]).trim();
   if (!raw) return null;
@@ -79,6 +90,8 @@ export type FundingListClientState = {
   /** When true, URL uses `dept=none` (explicit empty department selection). */
   noDepartmentsSelected?: boolean;
   rd: RdListFilterState;
+  /** Active saved-search pin (`?saved=`). UI only — not persisted in saved search JSON. */
+  savedSearchId?: string | null;
 };
 
 /** Default funding list: HHS/NIH, open+forecasted scope, posted date sort. */
@@ -369,11 +382,21 @@ export function searchParamsToFundingListState(searchParams: SearchParams): Fund
     allDepartments: isExplicitAllDepartmentsParam(searchParams),
     noDepartmentsSelected: isExplicitNoDepartmentsParam(searchParams),
     rd: parseRdListFilters(searchParams),
+    savedSearchId: parseSavedSearchId(searchParams),
   };
+}
+
+export function hrefWithSavedSearchPin(href: string, savedSearchId: string): string {
+  const [path, query = ""] = href.split("?");
+  const params = new URLSearchParams(query);
+  params.set(FUNDING_SAVED_SEARCH_PARAM, savedSearchId);
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
 }
 
 export function fundingListHref(state: FundingListClientState): string {
   const p = new URLSearchParams();
+  if (state.savedSearchId) p.set(FUNDING_SAVED_SEARCH_PARAM, state.savedSearchId);
   if (state.q.trim()) p.set("q", state.q.trim());
   p.set("scope", state.scope);
   for (const tab of state.tabs) {

@@ -163,11 +163,12 @@ export function parseSavedFundingListState(value: unknown): FundingListClientSta
   return r.success ? r.data : null;
 }
 
-/** Strip pagination when persisting (restored searches open on page 1). */
+/** Strip pagination and saved-search pin when persisting or comparing filter state. */
 export function fundingListStateForBookmark(state: FundingListClientState): FundingListClientState {
   return {
     ...state,
     page: DEFAULT_FUNDING_LIST_PAGE,
+    savedSearchId: null,
   };
 }
 
@@ -315,15 +316,107 @@ export function formatSavedSearchFilterSummary(state: FundingListClientState): s
   return parts.join(" · ");
 }
 
-/** True when the current list URL matches a saved search link. */
+function sortedStringArrayEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.every((value, index) => value === right[index]);
+}
+
+function departmentSubsEqual(
+  a: FundingListClientState["departmentSubs"],
+  b: FundingListClientState["departmentSubs"]
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (!sortedStringArrayEqual(a[key] ?? [], b[key] ?? [])) return false;
+  }
+  return true;
+}
+
+function rdFiltersEqual(a: RdListFilterState, b: RdListFilterState): boolean {
+  return (
+    a.clinicalTrialMode === b.clinicalTrialMode &&
+    sortedStringArrayEqual(a.activityFamilies, b.activityFamilies) &&
+    sortedStringArrayEqual(a.nihIc, b.nihIc) &&
+    sortedStringArrayEqual(a.announcement, b.announcement) &&
+    sortedStringArrayEqual(a.pathway, b.pathway) &&
+    sortedStringArrayEqual(a.investigatorTags, b.investigatorTags) &&
+    sortedStringArrayEqual(a.mechanismTypes, b.mechanismTypes) &&
+    sortedStringArrayEqual(a.collaborations, b.collaborations) &&
+    sortedStringArrayEqual(a.humanSubjects, b.humanSubjects)
+  );
+}
+
+/** Saved-search filters excluding stacked quick-filter tabs. */
+export function savedSearchCoreFiltersEqual(
+  saved: FundingListClientState,
+  current: FundingListClientState
+): boolean {
+  return (
+    saved.q.trim() === current.q.trim() &&
+    saved.scope === current.scope &&
+    sortedStringArrayEqual(saved.departments, current.departments) &&
+    departmentSubsEqual(saved.departmentSubs, current.departmentSubs) &&
+    sortedStringArrayEqual(saved.legacyAgencies, current.legacyAgencies) &&
+    Boolean(saved.allDepartments) === Boolean(current.allDepartments) &&
+    Boolean(saved.noDepartmentsSelected) === Boolean(current.noDepartmentsSelected) &&
+    rdFiltersEqual(saved.rd, current.rd) &&
+    saved.sort === current.sort &&
+    saved.order === current.order &&
+    saved.perPage === current.perPage
+  );
+}
+
+function savedSearchQuickFiltersCompatible(
+  saved: FundingListClientState,
+  current: FundingListClientState
+): boolean {
+  if (!saved.tabs.every((tab) => current.tabs.includes(tab))) return false;
+  if (saved.tabs.includes("closing_soon")) {
+    const savedDays = saved.closingDays ?? 30;
+    const currentDays = current.closingDays ?? 30;
+    if (savedDays !== currentDays) return false;
+  }
+  if (saved.tabs.includes("new_this_week")) {
+    const savedDays = saved.postedDays ?? 7;
+    const currentDays = current.postedDays ?? 7;
+    if (savedDays !== currentDays) return false;
+  }
+  return true;
+}
+
+function parseSavedSearchHref(savedHref: string): FundingListClientState {
+  const queryString = savedHref.includes("?") ? (savedHref.split("?")[1] ?? "") : "";
+  return fundingListStateForBookmark(
+    searchParamsToFundingListState(urlSearchParamsToRecord(new URLSearchParams(queryString)))
+  );
+}
+
+/**
+ * True when the current list still reflects a saved search, including extra stacked quick filters.
+ * Used for chip highlight and context bar — not for "filters match saved exactly" in the flyout.
+ */
+export function savedSearchStillActive(
+  current: FundingListClientState,
+  savedHref: string,
+  savedSearchId?: string
+): boolean {
+  if (savedSearchId && current.savedSearchId === savedSearchId) return true;
+  const saved = parseSavedSearchHref(savedHref);
+  const bookmarked = fundingListStateForBookmark(current);
+  return (
+    savedSearchCoreFiltersEqual(saved, bookmarked) &&
+    savedSearchQuickFiltersCompatible(saved, bookmarked)
+  );
+}
+
+/** True when the current list URL exactly matches a saved search link. */
 export function savedSearchMatchesCurrentState(
   current: FundingListClientState,
   savedHref: string
 ): boolean {
-  const queryString = savedHref.includes("?") ? (savedHref.split("?")[1] ?? "") : "";
-  const savedState = fundingListStateForBookmark(
-    searchParamsToFundingListState(urlSearchParamsToRecord(new URLSearchParams(queryString)))
-  );
+  const saved = parseSavedSearchHref(savedHref);
   const bookmarked = fundingListStateForBookmark(current);
-  return fundingListHref(savedState) === fundingListHref(bookmarked);
+  return fundingListHref(saved) === fundingListHref(bookmarked);
 }
