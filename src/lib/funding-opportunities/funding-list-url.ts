@@ -133,6 +133,62 @@ export function fundingListDefaultHref(): string {
   return fundingListHref(defaultFundingListClientState());
 }
 
+export type FundingListQuickFilterLayer = Pick<
+  FundingListClientState,
+  "tabs" | "closingDays" | "postedDays"
+>;
+
+/** Sidebar, keyword, agency, scope, and sort — independent of quick-filter tabs. */
+export function fundingListCoreState(state: FundingListClientState): FundingListClientState {
+  return {
+    q: state.q,
+    scope: state.scope,
+    tabs: [],
+    sort: state.sort,
+    order: state.order,
+    page: DEFAULT_FUNDING_LIST_PAGE,
+    perPage: state.perPage,
+    departments: [...state.departments],
+    departmentSubs: { ...state.departmentSubs },
+    legacyAgencies: [...state.legacyAgencies],
+    allDepartments: state.allDepartments,
+    noDepartmentsSelected: state.noDepartmentsSelected,
+    rd: { ...state.rd },
+    savedSearchId: null,
+  };
+}
+
+export function fundingListQuickFilterLayer(state: FundingListClientState): FundingListQuickFilterLayer {
+  return {
+    tabs: [...state.tabs],
+    closingDays: state.closingDays,
+    postedDays: state.postedDays,
+  };
+}
+
+/** Combine core filters, stacked quick-filter tabs, and an optional saved-search pin. */
+export function mergeFundingListLayers(
+  core: FundingListClientState,
+  quick: FundingListQuickFilterLayer,
+  savedSearchId?: string | null
+): FundingListClientState {
+  return {
+    ...core,
+    tabs: quick.tabs,
+    closingDays: quick.closingDays,
+    postedDays: quick.postedDays,
+    savedSearchId: savedSearchId ?? null,
+    page: DEFAULT_FUNDING_LIST_PAGE,
+  };
+}
+
+export function parseFundingListHref(href: string): FundingListClientState {
+  const queryString = href.includes("?") ? (href.split("?")[1] ?? "") : "";
+  return searchParamsToFundingListState(
+    urlSearchParamsToRecord(new URLSearchParams(queryString))
+  );
+}
+
 function isExplicitAllDepartmentsParam(searchParams: SearchParams): boolean {
   const raw = searchParams.dept;
   if (raw === "all") return true;
@@ -392,6 +448,45 @@ export function hrefWithSavedSearchPin(href: string, savedSearchId: string): str
   params.set(FUNDING_SAVED_SEARCH_PARAM, savedSearchId);
   const qs = params.toString();
   return qs ? `${path}?${qs}` : path;
+}
+
+const PRE_SAVED_SEARCH_HREF_KEY = "prospera-funding-pre-saved-href";
+
+/** Remember list URL before activating a saved search (for toggle-off restore). */
+export function rememberSavedSearchRestorePoint(href: string): void {
+  try {
+    sessionStorage.setItem(PRE_SAVED_SEARCH_HREF_KEY, href);
+  } catch {
+    /* private browsing / disabled storage */
+  }
+}
+
+export function readSavedSearchRestorePoint(): string | null {
+  try {
+    return sessionStorage.getItem(PRE_SAVED_SEARCH_HREF_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearSavedSearchRestorePoint(): void {
+  try {
+    sessionStorage.removeItem(PRE_SAVED_SEARCH_HREF_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Build the list URL after turning off a saved search while keeping stacked quick filters. */
+export function deactivateSavedSearchHrefForState(
+  current: FundingListClientState,
+  restoreHref: string | null
+): string {
+  const restoredCore = fundingListCoreState(
+    restoreHref ? parseFundingListHref(restoreHref) : defaultFundingListClientState()
+  );
+  const quick = fundingListQuickFilterLayer(current);
+  return fundingListHref(mergeFundingListLayers(restoredCore, quick, null));
 }
 
 export function fundingListHref(state: FundingListClientState): string {

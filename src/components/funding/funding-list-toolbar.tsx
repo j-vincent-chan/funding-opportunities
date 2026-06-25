@@ -13,13 +13,23 @@ import {
   type SavedSearchLink,
 } from "@/components/funding/funding-saved-searches-strip";
 import {
-  fundingListDefaultHref,
+  clearSavedSearchRestorePoint,
+  deactivateSavedSearchHrefForState,
+  DEFAULT_FUNDING_LIST_PAGE,
+  readSavedSearchRestorePoint,
   searchParamsToFundingListState,
   urlSearchParamsToRecord,
 } from "@/lib/funding-opportunities/funding-list-url";
-import { fundingListStateForBookmark } from "@/lib/funding-opportunities/saved-funding-list-state";
 import type { RdsgOwnerRecipient } from "@/lib/funding-opportunities/saved-search-alert-recipients";
 import { useSearchParams } from "next/navigation";
+
+function readFundingListStateFromLocation() {
+  if (typeof window === "undefined") {
+    return searchParamsToFundingListState({});
+  }
+  const record = urlSearchParamsToRecord(new URLSearchParams(window.location.search));
+  return searchParamsToFundingListState(record);
+}
 
 export function FundingListToolbar({
   counts,
@@ -37,12 +47,14 @@ export function FundingListToolbar({
 
   const currentState = useMemo(() => {
     const record = urlSearchParamsToRecord(new URLSearchParams(sp.toString()));
-    return fundingListStateForBookmark(searchParamsToFundingListState(record));
+    const state = searchParamsToFundingListState(record);
+    return { ...state, page: DEFAULT_FUNDING_LIST_PAGE };
   }, [sp]);
 
-  const activeSearch = useActiveSavedSearch(savedSearches, currentState);
   const [openFlyoutId, setOpenFlyoutId] = useState<string | null>(null);
   const [loadedSavedSearchId, setLoadedSavedSearchId] = useState<string | null>(null);
+
+  const activeSearch = useActiveSavedSearch(savedSearches, currentState, loadedSavedSearchId);
 
   useEffect(() => {
     if (currentState.savedSearchId) {
@@ -81,8 +93,11 @@ export function FundingListToolbar({
           search={activeSearch}
           onEdit={() => setOpenFlyoutId(activeSearch.id)}
           onClear={() => {
+            const latestState = readFundingListStateFromLocation();
+            const restoreHref = readSavedSearchRestorePoint();
+            clearSavedSearchRestorePoint();
             setLoadedSavedSearchId(null);
-            router.push(fundingListDefaultHref());
+            router.push(deactivateSavedSearchHrefForState(latestState, restoreHref));
           }}
         />
       ) : null}

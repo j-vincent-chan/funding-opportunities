@@ -6,8 +6,7 @@ import {
   DEFAULT_FUNDING_LIST_PAGE,
   FUNDING_LIST_PAGE_SIZES,
   fundingListHref,
-  searchParamsToFundingListState,
-  urlSearchParamsToRecord,
+  parseFundingListHref,
   type FundingListClientState,
   type FundingListPageSize,
   type FundingListScope,
@@ -387,10 +386,7 @@ function savedSearchQuickFiltersCompatible(
 }
 
 function parseSavedSearchHref(savedHref: string): FundingListClientState {
-  const queryString = savedHref.includes("?") ? (savedHref.split("?")[1] ?? "") : "";
-  return fundingListStateForBookmark(
-    searchParamsToFundingListState(urlSearchParamsToRecord(new URLSearchParams(queryString)))
-  );
+  return parseFundingListHref(savedHref);
 }
 
 /**
@@ -419,4 +415,18 @@ export function savedSearchMatchesCurrentState(
   const saved = parseSavedSearchHref(savedHref);
   const bookmarked = fundingListStateForBookmark(current);
   return fundingListHref(saved) === fundingListHref(bookmarked);
+}
+
+/**
+ * True when a saved search chip should show as active / toggle off on click.
+ * Uses the loaded-search id so a stacked quick filter cannot strand toggle state.
+ */
+export function isSavedSearchEngaged(
+  current: FundingListClientState,
+  savedHref: string,
+  savedSearchId: string,
+  loadedSavedSearchId?: string | null
+): boolean {
+  if (loadedSavedSearchId === savedSearchId) return true;
+  return savedSearchStillActive(current, savedHref, savedSearchId);
 }

@@ -8,16 +8,34 @@ import {
 } from "@/app/actions/funding-search-saves";
 import { FundingSavedSearchFlyout } from "@/components/funding/funding-saved-search-flyout";
 import {
-  fundingListDefaultHref,
-  hrefWithSavedSearchPin,
+  clearSavedSearchRestorePoint,
+  deactivateSavedSearchHrefForState,
+  defaultFundingListClientState,
+  fundingListCoreState,
+  fundingListHref,
+  fundingListQuickFilterLayer,
+  mergeFundingListLayers,
+  parseFundingListHref,
+  readSavedSearchRestorePoint,
+  rememberSavedSearchRestorePoint,
+  searchParamsToFundingListState,
+  urlSearchParamsToRecord,
   type FundingListClientState,
 } from "@/lib/funding-opportunities/funding-list-url";
-import {
-  savedSearchStillActive,
-  suggestSavedSearchName,
-} from "@/lib/funding-opportunities/saved-funding-list-state";
 import type { SavedSearchAlertFrequency } from "@/components/funding/funding-saved-search-flyout";
 import type { RdsgOwnerRecipient } from "@/lib/funding-opportunities/saved-search-alert-recipients";
+import {
+  isSavedSearchEngaged,
+  suggestSavedSearchName,
+} from "@/lib/funding-opportunities/saved-funding-list-state";
+
+function readFundingListStateFromLocation(): FundingListClientState {
+  if (typeof window === "undefined") {
+    return defaultFundingListClientState();
+  }
+  const record = urlSearchParamsToRecord(new URLSearchParams(window.location.search));
+  return searchParamsToFundingListState(record);
+}
 
 export type SavedSearchLink = {
   id: string;
@@ -71,9 +89,11 @@ function BellIcon({ alertsOn }: { alertsOn: boolean }) {
 export function isActiveSavedSearch(
   current: FundingListClientState,
   savedHref: string,
-  savedSearchId?: string
+  savedSearchId?: string,
+  loadedSavedSearchId?: string | null
 ): boolean {
-  return savedSearchStillActive(current, savedHref, savedSearchId);
+  if (!savedSearchId) return false;
+  return isSavedSearchEngaged(current, savedHref, savedSearchId, loadedSavedSearchId);
 }
 
 function MatchCountBadge({ count, hasNew }: { count: number; hasNew?: boolean }) {
@@ -142,24 +162,51 @@ export function FundingSavedSearchesStrip({
 
   const runSavedSearch = useCallback(
     (search: SavedSearchLink) => {
+      const latestState = readFundingListStateFromLocation();
+      const active = isActiveSavedSearch(
+        latestState,
+        search.href,
+        search.id,
+        loadedSavedSearchId
+      );
+      const quick = fundingListQuickFilterLayer(latestState);
+
+      if (active) {
+        setLoadedSavedSearchId(null);
+        setOpenFlyoutId(null);
+        const restoreHref = readSavedSearchRestorePoint();
+        clearSavedSearchRestorePoint();
+        const href = deactivateSavedSearchHrefForState(latestState, restoreHref);
+        startTransition(() => {
+          router.push(href);
+          router.refresh();
+        });
+        return;
+      }
+
+      rememberSavedSearchRestorePoint(
+        fundingListHref(fundingListCoreState({ ...latestState, savedSearchId: null }))
+      );
+
+      const savedCore = fundingListCoreState(parseFundingListHref(search.href));
       setLoadedSavedSearchId(search.id);
       startTransition(async () => {
         await markSavedFundingSearchViewedAction(search.id);
-        router.push(hrefWithSavedSearchPin(search.href, search.id));
+        router.push(fundingListHref(mergeFundingListLayers(savedCore, quick, search.id)));
         router.refresh();
       });
     },
-    [router, setLoadedSavedSearchId]
+    [loadedSavedSearchId, router, setLoadedSavedSearchId, setOpenFlyoutId]
   );
 
   const toggleEditFlyout = useCallback(
     (search: SavedSearchLink) => {
-      if (isActiveSavedSearch(currentState, search.href, search.id)) {
+      if (isActiveSavedSearch(currentState, search.href, search.id, loadedSavedSearchId)) {
         setLoadedSavedSearchId(search.id);
       }
       setOpenFlyoutId(openFlyoutId === search.id ? null : search.id);
     },
-    [currentState, openFlyoutId, setLoadedSavedSearchId, setOpenFlyoutId]
+    [currentState, loadedSavedSearchId, openFlyoutId, setLoadedSavedSearchId, setOpenFlyoutId]
   );
 
   const submitNewSearch = useCallback(() => {
@@ -195,7 +242,12 @@ export function FundingSavedSearchesStrip({
         </span>
 
         {savedSearches.map((search) => {
-          const active = isActiveSavedSearch(currentState, search.href, search.id);
+          const active = isActiveSavedSearch(
+            currentState,
+            search.href,
+            search.id,
+            loadedSavedSearchId
+          );
           const flyoutOpen = openFlyoutId === search.id;
           return (
             <div
@@ -220,7 +272,7 @@ export function FundingSavedSearchesStrip({
                       ? "text-[#3C3489] hover:bg-[#E4E2FC]"
                       : "hover:bg-[var(--fo-row-hover)] hover:text-[var(--fo-title)]",
                   ].join(" ")}
-                  title={`Run “${search.name}”`}
+                  title={active ? `Clear “${search.name}”` : `Run “${search.name}”`}
                 >
                   <BellIcon alertsOn={search.emailNotificationsEnabled} />
                   <span className="min-w-0 truncate">{search.name}</span>
@@ -258,7 +310,13 @@ export function FundingSavedSearchesStrip({
                   onClose={() => setOpenFlyoutId(null)}
                   onDeleted={() => {
                     setOpenFlyoutId(null);
-                    if (active) router.replace(fundingListDefaultHref());
+                    if (active) {
+                      setLoadedSavedSearchId(null);
+                      const latestState = readFundingListStateFromLocation();
+                      const restoreHref = readSavedSearchRestorePoint();
+                      clearSavedSearchRestorePoint();
+                      router.replace(deactivateSavedSearchHrefForState(latestState, restoreHref));
+                    }
                     router.refresh();
                   }}
                   onSaved={() => router.refresh()}
@@ -332,9 +390,14 @@ export function FundingSavedSearchesStrip({
 
 export function useActiveSavedSearch(
   savedSearches: SavedSearchLink[],
-  currentState: FundingListClientState
+  currentState: FundingListClientState,
+  loadedSavedSearchId?: string | null
 ): SavedSearchLink | null {
-  return savedSearches.find((search) => isActiveSavedSearch(currentState, search.href, search.id)) ?? null;
+  return (
+    savedSearches.find((search) =>
+      isActiveSavedSearch(currentState, search.href, search.id, loadedSavedSearchId)
+    ) ?? null
+  );
 }
 
 function SavedSearchBookmarkIcon() {

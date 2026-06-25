@@ -214,17 +214,22 @@ export function FundingQuickFiltersBar({
 
   const navigate = useCallback(
     (patch: Partial<FundingListClientState>, options?: { resetSidebar?: boolean }) => {
+      const record =
+        typeof window !== "undefined"
+          ? urlSearchParamsToRecord(new URLSearchParams(window.location.search))
+          : urlSearchParamsToRecord(searchParams);
+      const latestState = searchParamsToFundingListState(record);
       router.push(
         fundingListHref({
-          ...state,
-          ...(options?.resetSidebar && !state.savedSearchId ? defaultSidebarFilterPatch() : {}),
+          ...latestState,
+          ...(options?.resetSidebar && !latestState.savedSearchId ? defaultSidebarFilterPatch() : {}),
           ...patch,
           page: DEFAULT_FUNDING_LIST_PAGE,
         })
       );
       setOpenMenu(null);
     },
-    [router, state]
+    [router, searchParams]
   );
 
   const toggleQuickFilter = useCallback(
@@ -491,7 +496,11 @@ export function FundingQuickFiltersBar({
 
         <PillDivider />
 
-        <button type="button" onClick={() => toggleQuickFilter("esi_career")} className={pillClasses("neutral", esiActive)}>
+        <button
+          type="button"
+          onClick={() => toggleQuickFilter("esi_career")}
+          className={pillClasses("neutral", esiActive)}
+        >
           <span>Early career / ESI</span>
           <PillCount count={counts.esi} active={esiActive} />
         </button>
