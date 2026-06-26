@@ -36,9 +36,7 @@ export function PipelineListMetricsRow({
 
   const showNa = secondaryDisplay === "na";
 
-  /** Order: context anchor → PI linked → contacted → interested → assigned → overdue */
-  const cells: { key: string; label: string; value: number; variant: Variant; isAnchor?: boolean }[] = [
-    { key: "anchor", label: anchorLabel, value: sliceTotal, variant: "neutral", isAnchor: true },
+  const secondary: { key: string; label: string; value: number; variant: Variant }[] = [
     { key: "pi", label: "PI linked", value: piLinked, variant: piLinked > 0 ? "focus" : "neutral" },
     { key: "contacted", label: "Contacted", value: contacted, variant: contacted > 0 ? "positive" : "neutral" },
     { key: "interested", label: "Interested", value: interested, variant: interested > 0 ? "positive" : "neutral" },
@@ -52,63 +50,77 @@ export function PipelineListMetricsRow({
     { key: "overdue", label: "Overdue", value: overdue, variant: overdue > 0 ? "attention" : "neutral" },
   ];
 
-  function metricShell(v: Variant, isAnchor: boolean) {
-    if (isAnchor) {
-      return "border border-[var(--fo-border-strong)] bg-[var(--fo-inset)] shadow-[var(--fo-shadow-metric)] ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_6%,transparent)]";
-    }
-    const base =
-      "border border-[var(--fo-border-strong)] bg-[var(--fo-paper)] shadow-[var(--fo-shadow-metric)] ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_5%,transparent)]";
+  function secondaryTone(v: Variant) {
     switch (v) {
       case "focus":
-        return `${base} border-l-[3px] border-l-[var(--fo-interaction)] bg-[color-mix(in_srgb,var(--fo-select-tint)_55%,var(--fo-paper))]`;
+        return "border-[var(--fo-interaction)]/25 bg-[color-mix(in_srgb,var(--fo-select-tint)_50%,var(--fo-paper))]";
       case "attention":
-        return `${base} border-l-[3px] border-l-[var(--fo-warn-border)] bg-[color-mix(in_srgb,var(--fo-warn-bg)_70%,var(--fo-paper))]`;
+        return "border-[var(--fo-warn-border)] bg-[color-mix(in_srgb,var(--fo-warn-bg)_75%,var(--fo-paper))]";
       case "positive":
-        return `${base} border-l-[3px] border-l-[var(--fo-success-border)] bg-[color-mix(in_srgb,var(--fo-success-bg)_65%,var(--fo-paper))]`;
+        return "border-[var(--fo-success-border)] bg-[color-mix(in_srgb,var(--fo-success-bg)_70%,var(--fo-paper))]";
       default:
-        return base;
+        return "border-[var(--fo-border)] bg-[var(--fo-paper)]";
+    }
+  }
+
+  function valueTone(v: Variant) {
+    switch (v) {
+      case "focus":
+        return "text-[var(--fo-interaction)]";
+      case "attention":
+        return "text-[var(--fo-warn-text)]";
+      case "positive":
+        return "text-[var(--fo-success-text)]";
+      default:
+        return "text-[var(--fo-display)]";
     }
   }
 
   return (
-    <div>
-      <div className="mb-4 max-w-3xl">
+    <div className="flex min-h-0 flex-col gap-4">
+      <div className="max-w-2xl">
         <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-[var(--fo-section-label)]">Context summary</p>
-        <p className="mt-1.5 text-sm leading-relaxed text-[var(--fo-ink-body)]">
+        <p className="mt-1 text-sm leading-relaxed text-[var(--fo-ink-muted)]">
           {summaryHint ??
             (showNa
-              ? "Untagged slice: total notices without a research community tag (refine filters apply). PI workflow metrics are not shown until communities are tagged."
-              : "Same community slice across Triage, Monitor, Cold, and Archived (refine filters apply). Counts overlap — one opportunity can be PI linked, contacted, assigned, and overdue at the same time.")}
+              ? "Untagged notices without a research community (refine filters apply)."
+              : "Same cohort across all pipeline stages. Counts overlap — one notice can appear in several metrics.")}
         </p>
       </div>
+
       <div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
+        className="flex flex-col gap-3 lg:flex-row lg:items-stretch"
         role="group"
         aria-label={`${anchorLabel}: ${sliceTotal} opportunities in the current slice; other tiles are overlapping counts on that same list.`}
       >
-        {cells.map((c) => (
-          <div key={c.key} className={`relative overflow-hidden rounded-2xl px-4 py-4 ${metricShell(c.variant, Boolean(c.isAnchor))}`}>
-            {c.isAnchor ? (
-              <>
-                <p className="text-[0.65rem] font-bold leading-snug tracking-wide text-[var(--fo-ink-muted)]">{anchorEyebrow}</p>
-                <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-base font-bold leading-snug text-[var(--fo-display)] [overflow-wrap:anywhere] sm:text-lg">
-                  {c.label}
-                </p>
-                <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-[var(--fo-display)]">{c.value}</p>
-                <p className="mt-1.5 text-[0.65rem] font-medium leading-snug text-[var(--fo-ink-muted)]">
-                  {anchorFootnote ?? "Opportunities matching filters"}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[var(--fo-section-label)]">{c.label}</p>
-                <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-[var(--fo-display)]">
-                  {showNa ? "-" : c.value}
-                </p>
-              </>
-            )}
+        <div className="flex min-w-0 shrink-0 flex-col justify-between rounded-2xl border border-[var(--fo-border-strong)] bg-[var(--fo-inset)] px-5 py-4 shadow-sm ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_5%,transparent)] lg:w-[11.5rem] xl:w-[12.5rem]">
+          <div>
+            <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-[var(--fo-ink-muted)]">{anchorEyebrow}</p>
+            <p className="mt-1.5 text-base font-semibold leading-snug text-[var(--fo-display)] [overflow-wrap:anywhere]">
+              {anchorLabel}
+            </p>
           </div>
-        ))}
+          <div className="mt-4">
+            <p className="text-4xl font-bold tabular-nums tracking-tight text-[var(--fo-display)]">{sliceTotal}</p>
+            <p className="mt-1.5 text-[0.65rem] leading-snug text-[var(--fo-ink-muted)]">
+              {anchorFootnote ?? "Matching current filters"}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {secondary.map((c) => (
+            <div
+              key={c.key}
+              className={`flex flex-col justify-between rounded-xl border px-3.5 py-3 shadow-sm ${secondaryTone(c.variant)}`}
+            >
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-[var(--fo-ink-muted)]">{c.label}</p>
+              <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${valueTone(c.variant)}`}>
+                {showNa ? "—" : c.value}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

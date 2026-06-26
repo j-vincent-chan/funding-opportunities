@@ -97,7 +97,32 @@ function buildActionLines(
     });
   }
 
-  return lines.slice(0, 6);
+  return lines.slice(0, 5);
+}
+
+function toneStyles(tone: ActionLine["tone"]) {
+  if (tone === "warn") {
+    return {
+      row: "border-[var(--fo-warn-border)] bg-[var(--fo-warn-bg)]",
+      badge: "bg-[var(--fo-paper)] text-[var(--fo-warn-text)] ring-[var(--fo-warn-border)]",
+      title: "text-[var(--fo-warn-text)]",
+      detail: "text-[var(--fo-warn-text)]/85",
+    };
+  }
+  if (tone === "good") {
+    return {
+      row: "border-[var(--fo-success-border)] bg-[var(--fo-success-bg)]",
+      badge: "bg-[var(--fo-paper)] text-[var(--fo-success-text)] ring-[var(--fo-success-border)]",
+      title: "text-[var(--fo-success-text)]",
+      detail: "text-[var(--fo-success-text)]/85",
+    };
+  }
+  return {
+    row: "border-[var(--fo-border)] bg-[var(--fo-paper)]",
+    badge: "bg-[var(--fo-inset)] text-[var(--fo-display)] ring-[var(--fo-border)]",
+    title: "text-[var(--fo-display)]",
+    detail: "text-[var(--fo-ink-muted)]",
+  };
 }
 
 export function PipelineListNextActionsCard({
@@ -115,79 +140,52 @@ export function PipelineListNextActionsCard({
   const actions = buildActionLines(bucketTab, filtered, byBucketCount);
 
   return (
-    <aside className="relative flex flex-col overflow-hidden rounded-2xl border border-[var(--fo-border-strong)] bg-[var(--fo-paper)] shadow-[var(--fo-shadow-metric)] ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_7%,transparent)]">
-      <div className="border-b border-[var(--fo-divider)] bg-[var(--fo-inset)] px-5 py-4 sm:px-6 sm:py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-[var(--fo-section-label)]">Priorities</p>
-            <h3 className="mt-1 text-lg font-semibold tracking-tight text-[var(--fo-display)]">Next best actions</h3>
-            <p className="mt-1.5 max-w-[20rem] text-xs leading-snug text-[var(--fo-ink-body)]">
-              Highest-impact follow-ups for this same slice — several rows can count toward multiple priorities at once.
-            </p>
-          </div>
-          <span className="max-w-[10.5rem] shrink-0 rounded-lg border border-[var(--fo-border-strong)] bg-[var(--fo-paper)] px-2.5 py-1.5 text-center shadow-sm">
-            <span className="block line-clamp-2 text-[0.6rem] font-bold leading-tight text-[var(--fo-display)] [overflow-wrap:anywhere]">
-              {sliceLabel}
-            </span>
-            <span className="mt-1 block text-lg font-bold tabular-nums leading-none text-[var(--fo-display)]">{filtered.length}</span>
-          </span>
-        </div>
+    <aside className="flex min-h-0 flex-col">
+      <div className="mb-4">
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-[var(--fo-section-label)]">Priorities</p>
+        <h3 className="mt-1 text-base font-semibold tracking-tight text-[var(--fo-display)]">Next best actions</h3>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--fo-ink-muted)]">
+          <span className="font-medium text-[var(--fo-ink-body)]">{filtered.length}</span> in{" "}
+          <span className="font-medium text-[var(--fo-ink-body)]">{sliceLabel}</span>
+          {" · "}several rows can count toward multiple priorities.
+        </p>
       </div>
-      <div className="flex flex-1 flex-col px-5 pb-5 pt-4 sm:px-6 sm:pb-5">
-        <ul className="space-y-3">
-          {actions.map((a) => {
-            const tone =
-              a.tone === "warn"
-                ? "border-[var(--fo-warn-border)] bg-[var(--fo-warn-bg)]"
-                : a.tone === "good"
-                  ? "border-[var(--fo-success-border)] bg-[var(--fo-success-bg)]"
-                  : "border-[var(--fo-neutral-status-border)] bg-[var(--fo-neutral-status-bg)]";
-            return (
-              <li key={a.key} className={`rounded-lg border py-3 pl-3.5 pr-3.5 shadow-sm ${tone}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <p
-                    className={`text-sm font-semibold leading-snug ${
-                      a.tone === "warn"
-                        ? "text-[var(--fo-warn-text)]"
-                        : a.tone === "good"
-                          ? "text-[var(--fo-success-text)]"
-                          : "text-[var(--fo-display)]"
-                    }`}
+
+      <ul className="flex flex-1 flex-col gap-2">
+        {actions.map((a, index) => {
+          const styles = toneStyles(a.tone);
+          return (
+            <li
+              key={a.key}
+              className={`rounded-xl border px-3.5 py-3 shadow-sm ${styles.row}`}
+            >
+              <div className="flex items-start gap-3">
+                {a.count != null ? (
+                  <span
+                    className={`flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-lg px-1.5 text-sm font-bold tabular-nums ring-1 ${styles.badge}`}
+                    aria-hidden
                   >
-                    {a.title}
-                  </p>
-                  {a.count != null ? (
-                    <span
-                      className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-bold tabular-nums ${
-                        a.tone === "warn"
-                          ? "border-[var(--fo-warn-border)] bg-[var(--fo-paper)] text-[var(--fo-warn-text)] shadow-sm"
-                          : a.tone === "good"
-                            ? "border-[var(--fo-success-border)] bg-[var(--fo-paper)] text-[var(--fo-success-text)] shadow-sm"
-                            : "border-[var(--fo-border-strong)] bg-[var(--fo-paper)] text-[var(--fo-display)] shadow-sm"
-                      }`}
-                    >
-                      {a.count}
-                    </span>
+                    {a.count}
+                  </span>
+                ) : (
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--fo-inset)] text-xs font-bold text-[var(--fo-ink-muted)] ring-1 ring-[var(--fo-border)]"
+                    aria-hidden
+                  >
+                    {index + 1}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm font-semibold leading-snug ${styles.title}`}>{a.title}</p>
+                  {a.detail ? (
+                    <p className={`mt-1 text-xs leading-relaxed ${styles.detail}`}>{a.detail}</p>
                   ) : null}
                 </div>
-                {a.detail ? (
-                  <p
-                    className={`mt-1.5 text-xs leading-relaxed ${
-                      a.tone === "warn"
-                        ? "text-[var(--fo-warn-text)]/90"
-                        : a.tone === "good"
-                          ? "text-[var(--fo-success-text)]/90"
-                          : "text-[var(--fo-ink-muted)]"
-                    }`}
-                  >
-                    {a.detail}
-                  </p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </aside>
   );
 }

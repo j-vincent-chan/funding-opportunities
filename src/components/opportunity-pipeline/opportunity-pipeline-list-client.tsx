@@ -370,33 +370,37 @@ export function OpportunityPipelineListClient({
         />
       ) : (
         <>
-          <div className="grid gap-6 rounded-2xl border border-[var(--fo-border-strong)] bg-[var(--fo-panel-shelf)] p-5 shadow-inner ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_7%,transparent)] lg:grid-cols-[1fr_min(22rem,100%)] lg:items-stretch lg:gap-8 lg:p-7">
-            <PipelineListMetricsRow
-              anchorEyebrow={metricsAnchorEyebrow}
-              anchorLabel={metricsAnchorLabel}
-              anchorFootnote={
-                communityTab === "all"
-                  ? "All saved notices in this pipeline stage (refine filters)"
-                  : "All pipeline stages · refine filters"
-              }
-              sliceTotal={contextMetrics.sliceTotal}
-              piLinked={contextMetrics.piLinked}
-              contacted={contextMetrics.contacted}
-              interested={contextMetrics.interested}
-              assigned={contextMetrics.assigned}
-              overdue={contextMetrics.overdue}
-              summaryHint={
-                communityTab === "all"
-                  ? "Every notice in Triage, Monitor, Cold, and Archived — same cohort across stages (refine filters apply). Counts overlap."
-                  : `Same "${metricsAnchorLabel}" cohort across Triage, Monitor, Cold, and Archived (refine filters apply). Counts overlap — one opportunity can be PI linked, contacted, assigned, and overdue at the same time.`
-              }
-            />
-            <PipelineListNextActionsCard
-              bucketTab={bucketTab}
-              filtered={communityAndRefineCohort}
-              byBucketCount={byBucket.length}
-              sliceLabel={metricsAnchorLabel}
-            />
+          <div className="rounded-2xl border border-[var(--fo-border-strong)] bg-[var(--fo-panel-shelf)] p-5 shadow-sm ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_6%,transparent)] lg:p-6">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_min(18rem,34%)] lg:items-start lg:gap-10">
+              <PipelineListMetricsRow
+                anchorEyebrow={metricsAnchorEyebrow}
+                anchorLabel={metricsAnchorLabel}
+                anchorFootnote={
+                  communityTab === "all"
+                    ? "All saved notices (refine filters)"
+                    : "All stages · refine filters"
+                }
+                sliceTotal={contextMetrics.sliceTotal}
+                piLinked={contextMetrics.piLinked}
+                contacted={contextMetrics.contacted}
+                interested={contextMetrics.interested}
+                assigned={contextMetrics.assigned}
+                overdue={contextMetrics.overdue}
+                summaryHint={
+                  communityTab === "all"
+                    ? "Every notice in Triage, Monitor, Cold, and Archived — same cohort across stages."
+                    : `Same "${metricsAnchorLabel}" cohort across all stages (refine filters apply).`
+                }
+              />
+              <div className="border-t border-[var(--fo-divider)] pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+                <PipelineListNextActionsCard
+                  bucketTab={bucketTab}
+                  filtered={communityAndRefineCohort}
+                  byBucketCount={byBucket.length}
+                  sliceLabel={metricsAnchorLabel}
+                />
+              </div>
+            </div>
           </div>
 
           <section className="overflow-hidden rounded-2xl border border-[var(--fo-border-strong)] bg-[var(--fo-panel)] shadow-[var(--fo-shadow-raised)] ring-1 ring-[color-mix(in_srgb,var(--fo-ink)_8%,transparent)]">
