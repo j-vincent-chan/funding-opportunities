@@ -6,6 +6,8 @@ import {
   resolveLastUpdatedDateFromPayload,
   resolveListLastUpdatedDate,
   isNewWithinDays,
+  isUpdatedWithinDays,
+  lastUpdatedSortKey,
   newWithinDaysSortKey,
 } from "./funding-opportunity-dates";
 
@@ -106,5 +108,19 @@ describe("funding-opportunity-dates", () => {
         updatedAt: "2026-03-01T12:00:00.000Z",
       })
     ).toBe(new Date("2026-03-01T12:00:00.000Z").getTime());
+  });
+
+  it("counts open notices as recently updated when source updated within window", () => {
+    const today = new Date(new Date().toDateString());
+    const withinDays = (iso: string | null, days: number) => {
+      if (!iso) return false;
+      const d = new Date(iso);
+      return d >= new Date(today.getTime() - days * 24 * 60 * 60 * 1000) && d <= today;
+    };
+    const recentUpdated = new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    expect(isUpdatedWithinDays(recentUpdated, 7, withinDays)).toBe(true);
+    expect(isUpdatedWithinDays("2020-01-01", 7, withinDays)).toBe(false);
+    expect(lastUpdatedSortKey(recentUpdated)).toBeGreaterThan(lastUpdatedSortKey("2020-01-01"));
   });
 });

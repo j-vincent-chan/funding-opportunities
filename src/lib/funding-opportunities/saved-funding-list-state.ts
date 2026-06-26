@@ -21,6 +21,7 @@ const TABS = new Set<FundingListViewTab>([
   "recommended",
   "closing_soon",
   "new_this_week",
+  "last_updated",
   "large_awards",
   "esi_career",
   "investigator_initiated",
@@ -117,6 +118,7 @@ const fundingListClientStateSchema = z
     tab: z.unknown().optional(),
     closingDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
     postedDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(),
+    updatedDays: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(),
     sort: z.string().catch("posted_date"),
     order: z.enum(["asc", "desc"]).catch("desc"),
     page: z.number().int().positive().optional().catch(DEFAULT_FUNDING_LIST_PAGE),
@@ -142,6 +144,10 @@ const fundingListClientStateSchema = z
       postedDays:
         partial.postedDays === 7 || partial.postedDays === 30 || partial.postedDays === 90
           ? partial.postedDays
+          : undefined,
+      updatedDays:
+        partial.updatedDays === 7 || partial.updatedDays === 30 || partial.updatedDays === 90
+          ? partial.updatedDays
           : undefined,
       sort: partial.sort ?? "posted_date",
       order: partial.order === "asc" || partial.order === "desc" ? partial.order : "desc",
@@ -175,6 +181,7 @@ const TAB_LABELS: Partial<Record<FundingListViewTab, string>> = {
   recommended: "Matched to me",
   closing_soon: "Closing soon",
   new_this_week: "New this week",
+  last_updated: "Last updated",
   large_awards: "Large awards",
   esi_career: "ESI career",
   investigator_initiated: "Investigator-initiated",
@@ -380,6 +387,11 @@ function savedSearchQuickFiltersCompatible(
   if (saved.tabs.includes("new_this_week")) {
     const savedDays = saved.postedDays ?? 7;
     const currentDays = current.postedDays ?? 7;
+    if (savedDays !== currentDays) return false;
+  }
+  if (saved.tabs.includes("last_updated")) {
+    const savedDays = saved.updatedDays ?? 7;
+    const currentDays = current.updatedDays ?? 7;
     if (savedDays !== currentDays) return false;
   }
   return true;

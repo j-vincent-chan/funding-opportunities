@@ -33,7 +33,10 @@ const KEYWORD_STOP_WORDS = new Set([
 ]);
 
 /** Minimum significant tokens before emitting an all-tokens-must-match clause. */
-const MIN_TOKEN_AND_COUNT = 3;
+const MIN_TOKEN_AND_COUNT = 2;
+
+/** NIH-style activity codes (P41, R01, U01, …) — kept even when shorter than 4 chars. */
+const GRANT_MECHANISM_TOKEN = /^[a-z]\d{2}(?:[a-z]\d{2})?$/i;
 
 export function normalizeKeyword(raw: string | undefined): string {
   if (!raw || typeof raw !== "string") return "";
@@ -99,14 +102,20 @@ export function keywordSearchVariants(keyword: string): string[] {
   return Array.from(variants);
 }
 
-/** Distinct words (len ≥ 4, not stop words) for long-phrase fallback matching. */
+function isSignificantSearchToken(word: string): boolean {
+  if (KEYWORD_STOP_WORDS.has(word)) return false;
+  if (GRANT_MECHANISM_TOKEN.test(word)) return true;
+  return word.length >= 4;
+}
+
+/** Distinct words (len ≥ 4 or grant mechanism codes, not stop words) for token-AND fallback. */
 export function significantSearchTokens(keyword: string): string[] {
   const k = normalizeApostrophes(normalizeKeyword(keyword)).toLowerCase();
   const words = k
     .split(/\s+/)
     .map((w) => w.replace(/'/g, "").replace(/[^a-z0-9]/gi, ""))
     .filter(Boolean);
-  const tokens = words.filter((w) => w.length >= 4 && !KEYWORD_STOP_WORDS.has(w));
+  const tokens = words.filter(isSignificantSearchToken);
   return Array.from(new Set(tokens));
 }
 
@@ -134,8 +143,8 @@ function tokenMatchOrGroup(token: string): string {
 }
 
 /**
- * When a long phrase omits words (e.g. drops "Nation's" but keeps "Health"), require every
- * significant token to appear somewhere in title / description / opportunity number.
+ * When tokens are separated in the title (e.g. "NCBIB) (P41") or middle words are omitted,
+ * require every significant token to appear somewhere in title / description / opportunity number.
  */
 function buildKeywordTokenAndClause(keyword: string): string | null {
   const tokens = significantSearchTokens(keyword);

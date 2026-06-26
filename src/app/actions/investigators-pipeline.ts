@@ -396,6 +396,143 @@ export async function importInvestigatorsFromCsv(formData: FormData) {
   return { ok: true as const, imported: ok, errors };
 }
 
+const createInvestigatorInputSchema = z.object({
+  first_name: z.string().trim().min(1, "First name required"),
+  last_name: z.string().trim().min(1, "Last name required"),
+  email: z
+    .string()
+    .trim()
+    .max(320)
+    .optional()
+    .transform((v) => v ?? "")
+    .refine((v) => v === "" || z.string().email().safeParse(v).success, "Invalid email"),
+  home_department: z.string().trim().max(300).optional().transform((v) => v ?? ""),
+  division: z.string().trim().max(300).optional().transform((v) => v ?? ""),
+  rank: z.string().trim().max(120).optional().transform((v) => v ?? ""),
+  nih_profile_id: z.string().trim().max(128).optional().transform((v) => v ?? ""),
+  primary_research_area: z.string().trim().max(500).optional().transform((v) => v ?? ""),
+  research_summary: z.string().trim().max(16_000).optional().transform((v) => v ?? ""),
+  research_community_id: z
+    .string()
+    .uuid()
+    .optional()
+    .nullable()
+    .transform((v) => v ?? null),
+});
+
+export type CreateInvestigatorInput = z.infer<typeof createInvestigatorInputSchema>;
+
+export async function createInvestigatorAction(input: CreateInvestigatorInput) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const parsed = createInvestigatorInputSchema.safeParse(input);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map((i) => i.message).join("; ");
+    return { error: msg || "Invalid input" };
+  }
+
+  const d = parsed.data;
+  const affiliations: unknown[] = [];
+  const rawProfile = {
+    first_name: d.first_name,
+    last_name: d.last_name,
+    email: d.email,
+    home_department: d.home_department,
+    division: d.division,
+    rank: d.rank,
+    nih_profile_id: d.nih_profile_id,
+    primary_research_area: d.primary_research_area,
+    research_summary: d.research_summary,
+    source: "manual_entry",
+  };
+
+  const invBaseRow = {
+    first_name: d.first_name,
+    last_name: d.last_name,
+    full_name: fullName(d.first_name, d.last_name),
+    email: d.email || null,
+    home_department: d.home_department || null,
+    division: d.division || null,
+    rank: d.rank || null,
+    affiliations,
+    nih_profile_id: d.nih_profile_id || null,
+    research_community_id: d.research_community_id,
+    raw_profile_json: rawProfile,
+  };
+
+  let investigatorId: string;
+
+  if (d.email) {
+    const { data: existing } = await supabase
+      .from("investigators")
+      .select("id, raw_profile_json")
+      .ilike("email", d.email.trim())
+      .maybeSingle();
+
+    if (existing?.id) {
+      const { error } = await supabase
+        .from("investigators")
+        .update({
+          ...invBaseRow,
+          raw_profile_json: {
+            ...((existing.raw_profile_json as Record<string, unknown> | null) ?? {}),
+            ...rawProfile,
+          },
+        })
+        .eq("id", existing.id);
+      if (error) return { error: error.message };
+      investigatorId = existing.id;
+    } else {
+      const { data: inserted, error } = await supabase
+        .from("investigators")
+        .insert(invBaseRow)
+        .select("id")
+        .single();
+      if (error || !inserted) return { error: error?.message ?? "Insert failed" };
+      investigatorId = inserted.id;
+    }
+  } else {
+    const { data: inserted, error } = await supabase
+      .from("investigators")
+      .insert(invBaseRow)
+      .select("id")
+      .single();
+    if (error || !inserted) return { error: error?.message ?? "Insert failed" };
+    investigatorId = inserted.id;
+  }
+
+  const feats = buildInvestigatorFeatureRow({
+    primary_research_area: d.primary_research_area,
+    research_summary: d.research_summary,
+    division: d.division,
+    rank: d.rank,
+  });
+
+  const { error: featErr } = await supabase.from("investigator_profile_features").upsert(
+    {
+      investigator_id: investigatorId,
+      ...feats,
+    },
+    { onConflict: "investigator_id" }
+  );
+  if (featErr) return { error: featErr.message };
+
+  revalidatePath("/investigators");
+  revalidatePath(`/investigators/${investigatorId}`);
+  revalidatePath("/portfolio-intelligence");
+  revalidatePath("/funding-opportunities");
+
+  return {
+    ok: true as const,
+    investigatorId,
+    full_name: invBaseRow.full_name,
+  };
+}
+
 export async function normalizeInvestigatorProfilesForm(formData: FormData): Promise<void> {
   void formData;
   await normalizeInvestigatorProfiles();

@@ -43,6 +43,7 @@ export type FundingListViewTab =
   | "recommended"
   | "closing_soon"
   | "new_this_week"
+  | "last_updated"
   | "large_awards"
   | "esi_career"
   | "investigator_initiated"
@@ -73,6 +74,8 @@ export type FundingListClientState = {
   closingDays?: ClosingSoonDays;
   /** When `new_this_week` is in tabs, lookback in days (default 7). */
   postedDays?: PostedWithinDays;
+  /** When `last_updated` is in tabs, lookback in days (default 7). */
+  updatedDays?: PostedWithinDays;
   sort: string;
   order: "asc" | "desc";
   /** 1-based page index (URL `page`). */
@@ -135,7 +138,7 @@ export function fundingListDefaultHref(): string {
 
 export type FundingListQuickFilterLayer = Pick<
   FundingListClientState,
-  "tabs" | "closingDays" | "postedDays"
+  "tabs" | "closingDays" | "postedDays" | "updatedDays"
 >;
 
 /** Sidebar, keyword, agency, scope, and sort — independent of quick-filter tabs. */
@@ -163,6 +166,7 @@ export function fundingListQuickFilterLayer(state: FundingListClientState): Fund
     tabs: [...state.tabs],
     closingDays: state.closingDays,
     postedDays: state.postedDays,
+    updatedDays: state.updatedDays,
   };
 }
 
@@ -177,6 +181,7 @@ export function mergeFundingListLayers(
     tabs: quick.tabs,
     closingDays: quick.closingDays,
     postedDays: quick.postedDays,
+    updatedDays: quick.updatedDays,
     savedSearchId: savedSearchId ?? null,
     page: DEFAULT_FUNDING_LIST_PAGE,
   };
@@ -365,6 +370,12 @@ export function parsePostedDays(searchParams: SearchParams): PostedWithinDays | 
   return undefined;
 }
 
+export function parseUpdatedDays(searchParams: SearchParams): PostedWithinDays | undefined {
+  const raw = typeof searchParams.updated_days === "string" ? parseInt(searchParams.updated_days, 10) : NaN;
+  if (raw === 7 || raw === 30 || raw === 90) return raw;
+  return undefined;
+}
+
 export function defaultSortDirForKey(key: FundingListSortKey): "asc" | "desc" {
   if (key === "posted_date") return "desc";
   return "asc";
@@ -428,6 +439,7 @@ export function searchParamsToFundingListState(searchParams: SearchParams): Fund
     tabs,
     closingDays: tabs.includes("closing_soon") ? parseClosingDays(searchParams) ?? 30 : undefined,
     postedDays: tabs.includes("new_this_week") ? parsePostedDays(searchParams) ?? 7 : undefined,
+    updatedDays: tabs.includes("last_updated") ? parseUpdatedDays(searchParams) ?? 7 : undefined,
     sort: sortParamForKey(sort.key),
     order: sort.dir,
     page,
@@ -502,6 +514,9 @@ export function fundingListHref(state: FundingListClientState): string {
   }
   if (state.tabs.includes("new_this_week") && state.postedDays) {
     p.set("posted_days", String(state.postedDays));
+  }
+  if (state.tabs.includes("last_updated") && state.updatedDays) {
+    p.set("updated_days", String(state.updatedDays));
   }
   p.set("sort", state.sort);
   p.set("order", state.order);

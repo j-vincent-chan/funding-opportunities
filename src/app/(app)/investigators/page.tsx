@@ -1,13 +1,10 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { InvestigatorCsvForm } from "@/components/investigators/investigator-csv-form";
-import { InvestigatorSignalImportForm } from "@/components/investigators/investigator-signal-import-form";
-import { InvestigatorResearchCommunitySelect } from "@/components/investigators/investigator-research-community-select";
-import { InvestigatorRowActions } from "@/components/investigators/investigator-row-actions";
-import { Button } from "@/components/ui/button";
+import {
+  InvestigatorsDirectoryTable,
+  type InvestigatorDirectoryRow,
+} from "@/components/investigators/investigators-directory-table";
+import { InvestigatorsPageChrome } from "@/components/investigators/investigators-page-chrome";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -40,138 +37,48 @@ export default async function InvestigatorsPage({
   ]);
   const researchCommunities = (communityRows ?? []) as { id: string; label: string }[];
 
-  const filtered = (rows ?? []).filter((r) => {
+  const allRows = (rows ?? []) as InvestigatorDirectoryRow[];
+
+  const filtered = allRows.filter((r) => {
     if (!tag) return true;
-    const f = r.investigator_profile_features as
-      | { science_tags?: string[]; disease_tags?: string[] }
-      | null
-      | undefined;
+    const f = r.investigator_profile_features;
     const tags = [...(f?.science_tags ?? []), ...(f?.disease_tags ?? [])];
     return tags.includes(tag);
   });
 
+  const stats = {
+    showing: filtered.length,
+    total: allRows.length,
+    withEmail: allRows.filter((r) => r.email?.trim()).length,
+    withReporter: allRows.filter((r) => r.nih_profile_id).length,
+    withCommunity: allRows.filter((r) => r.research_community_id).length,
+  };
+
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="app-page-title">People</h1>
-        <p className="app-page-description">
-          People profiles, normalized tags, and deterministic NIH opportunity matches.
-        </p>
-      </header>
-
-      <Card>
-        <CardHeader title="Import people" description="CSV columns: first_name, last_name, email, home_department, division, rank, affiliations, primary_research_area, …" />
-        <CardBody className="space-y-4">
-          <InvestigatorCsvForm />
-          <InvestigatorSignalImportForm />
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader title="Search & filters" />
-        <CardBody>
-          <form className="flex flex-wrap gap-3" method="get">
-            <label className="text-xs font-medium text-[var(--fo-ink-muted)]">
-              Name contains
-              <input
-                name="q"
-                defaultValue={q}
-                className="mt-1 block w-56 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              />
-            </label>
-            <label className="text-xs font-medium text-[var(--fo-ink-muted)]">
-              Has science/disease tag
-              <input
-                name="tag"
-                defaultValue={tag}
-                placeholder="e.g. tumor_immunology"
-                className="mt-1 block w-56 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm text-[var(--foreground)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              />
-            </label>
-            <div className="flex items-end">
-              <Button type="submit" variant="secondary">
-                Apply
-              </Button>
-            </div>
-          </form>
-        </CardBody>
-      </Card>
-
+    <InvestigatorsPageChrome
+      q={q}
+      tag={tag}
+      stats={stats}
+      researchCommunities={researchCommunities}
+    >
       {error ? (
-        <p className="text-sm text-red-600">{error.message}</p>
+        <div className="px-5 py-8">
+          <p className="text-sm text-red-600">{error.message}</p>
+        </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          title="No people"
-          description="Import a CSV or Signal list to create people rows and normalized features."
-        />
+        <div className="px-5 py-10">
+          <EmptyState
+            title={stats.total === 0 ? "No people yet" : "No matches"}
+            description={
+              stats.total === 0
+                ? "Use Add person to enter someone manually, import a CSV, or sync from Signal."
+                : "Try clearing filters or broadening your name or tag search."
+            }
+          />
+        </div>
       ) : (
-        <Card>
-          <CardHeader title={`Directory (${filtered.length})`} />
-          <CardBody className="p-0">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b-2 border-[var(--fo-table-edge)] bg-[var(--fo-table-head)] text-xs uppercase text-[var(--fo-table-head-fg)]">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Department</th>
-                    <th className="px-4 py-2 font-medium">Research community</th>
-                    <th className="px-4 py-2 font-medium">RePORTER profile</th>
-                    <th className="px-4 py-2 font-medium">Tags (sample)</th>
-                    <th className="px-4 py-2 font-medium">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--fo-divider)]">
-                  {filtered.map((r) => {
-                    const f = r.investigator_profile_features as
-                      | { science_tags?: string[]; disease_tags?: string[] }
-                      | null
-                      | undefined;
-                    const sample = [...(f?.science_tags ?? []).slice(0, 2), ...(f?.disease_tags ?? []).slice(0, 1)];
-                    return (
-                      <tr key={r.id} className="transition-colors hover:bg-[var(--fo-row-hover)]">
-                        <td className="px-4 py-2">
-                          <Link
-                            href={`/investigators/${r.id}`}
-                            className="font-medium text-[var(--fo-interaction)] hover:text-[var(--fo-title)] hover:underline"
-                          >
-                            {r.full_name}
-                          </Link>
-                          <div className="text-xs text-[var(--fo-ink-muted)]">{r.email ?? "—"}</div>
-                        </td>
-                        <td className="px-4 py-2 text-[var(--fo-ink-body)]">
-                          {r.home_department ?? r.division ?? "—"}
-                        </td>
-                        <td className="px-4 py-2 align-top">
-                          <InvestigatorResearchCommunitySelect
-                            investigatorId={r.id}
-                            valueId={r.research_community_id as string | null}
-                            communities={researchCommunities}
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          {r.nih_profile_id ? (
-                            <Badge tone="info">Linked</Badge>
-                          ) : (
-                            <span className="text-xs text-[var(--fo-ink-muted)]">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-xs text-[var(--fo-ink-body)]">
-                          {sample.length ? sample.join(", ") : "—"}
-                        </td>
-                        <td className="px-4 py-2 align-top">
-                          <InvestigatorRowActions investigatorId={r.id} fullName={r.full_name} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardBody>
-        </Card>
+        <InvestigatorsDirectoryTable rows={filtered} researchCommunities={researchCommunities} />
       )}
-    </div>
+    </InvestigatorsPageChrome>
   );
 }

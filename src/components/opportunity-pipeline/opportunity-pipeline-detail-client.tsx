@@ -27,6 +27,10 @@ import {
 } from "@/components/opportunity-pipeline/pipeline-suggested-matches";
 import { PipelineSectionCard } from "@/components/opportunity-pipeline/pipeline-section-card";
 import { Button } from "@/components/ui/button";
+import {
+  InvestigatorManualEntryForm,
+  splitInvestigatorNameQuery,
+} from "@/components/investigators/investigator-manual-entry-form";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -620,6 +624,16 @@ export function OpportunityPipelineDetailClient({
                     </li>
                   ))}
                 </ul>
+              ) : piQuery.trim().length >= 2 ? (
+                <div className="mt-3 max-w-md">
+                  <p className="mb-2 text-xs text-stone-600">No directory match — add them manually:</p>
+                  <InvestigatorManualEntryForm
+                    compact
+                    submitLabel="Create & add"
+                    defaultValues={splitInvestigatorNameQuery(piQuery)}
+                    onCreated={({ investigatorId }) => addPi(investigatorId)}
+                  />
+                </div>
               ) : null}
             </div>
             <InvestigatorDecisionList

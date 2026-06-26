@@ -172,14 +172,28 @@ export function matchPriorityFilter(m: PipelinePiMatchRow, p: "all" | MatchPrior
   return coerceMatchPriority(m.match_priority) === p;
 }
 
+/** Each whitespace-separated token must appear somewhere in the haystack (ignores middle initials). */
+export function matchInvestigatorRosterQuery(
+  fullName: string,
+  email: string | null | undefined,
+  query: string,
+  extraHaystack: string[] = []
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const haystack = [fullName, email ?? "", ...extraHaystack].join(" ").toLowerCase();
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return tokens.every((token) => haystack.includes(token));
+}
+
 export function matchInvestigatorSearch(m: PipelinePiMatchRow, q: string): boolean {
-  const s = q.trim().toLowerCase();
-  if (!s) return true;
   const inv = m.investigators;
   const one = inv && !Array.isArray(inv) ? inv : Array.isArray(inv) ? inv[0] : null;
-  const name = (one?.full_name ?? "").toLowerCase();
-  const email = (one?.email ?? "").toLowerCase();
-  const org = investigatorOrgLine(m).toLowerCase();
-  const rationale = (m.rationale ?? "").toLowerCase();
-  return name.includes(s) || email.includes(s) || org.includes(s) || rationale.includes(s);
+  return matchInvestigatorRosterQuery(
+    one?.full_name ?? "",
+    one?.email,
+    q,
+    [investigatorOrgLine(m), m.rationale ?? ""]
+  );
 }

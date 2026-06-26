@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { setSavedOpportunityCommunitiesAction } from "@/app/actions/opportunity-pipeline-actions";
+import { matchInvestigatorRosterQuery } from "@/lib/opportunity-pipeline/investigator-workflow";
 import type { PipelineStage } from "@/lib/opportunity-pipeline/constants";
 import type { PipelineCommunityRef, NormalizedPipelineItem, PipelineFundingRow } from "@/lib/opportunity-pipeline/serializers";
 import {
@@ -213,13 +214,11 @@ export function TriageOpportunityWorkflow({
   }, [activeCommunityKey, activeCommunityIds.length, taggedCommunities]);
 
   const filteredRoster = useMemo(() => {
-    const q = globalRosterFilter.trim().toLowerCase();
-    if (!q) return roster;
-    return roster.filter(
-      (r) =>
-        (r.full_name ?? "").toLowerCase().includes(q) ||
-        (r.email ?? "").toLowerCase().includes(q) ||
-        (r.community_label ?? "").toLowerCase().includes(q)
+    if (!globalRosterFilter.trim()) return roster;
+    return roster.filter((r) =>
+      matchInvestigatorRosterQuery(r.full_name ?? "", r.email, globalRosterFilter, [
+        r.community_label ?? "",
+      ])
     );
   }, [roster, globalRosterFilter]);
 
@@ -271,6 +270,16 @@ export function TriageOpportunityWorkflow({
             opportunityCommunities={row.communities}
             hideHeader
             showCommunityOnRoster={taggedCommunities.length > 1}
+            researchCommunities={taggedCommunities.map((c) => ({ id: c.id, label: c.label }))}
+            defaultResearchCommunityId={taggedCommunities[0]?.id ?? null}
+            onInvestigatorCreated={(hit) => {
+              setRoster((prev) => {
+                if (prev.some((r) => r.id === hit.id)) return prev;
+                return [...prev, hit].sort((a, b) =>
+                  (a.full_name ?? "").localeCompare(b.full_name ?? "", undefined, { sensitivity: "base" })
+                );
+              });
+            }}
           />
         </div>
       )}

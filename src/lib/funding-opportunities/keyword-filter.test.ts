@@ -69,6 +69,11 @@ describe("significantSearchTokens", () => {
       "genomics",
     ]);
   });
+
+  it("includes NIH mechanism codes shorter than four characters", () => {
+    expect(significantSearchTokens("NCBIB P41")).toEqual(["ncbib", "p41"]);
+    expect(significantSearchTokens("R01")).toEqual(["r01"]);
+  });
 });
 
 describe("buildKeywordOrFilter", () => {
@@ -108,6 +113,14 @@ describe("buildKeywordOrFilter", () => {
     expect(filter).toContain("center");
     expect(filter).toContain("excellence");
     expect(filter).toContain("genomic");
+  });
+
+  it("matches NCBIB P41 when tokens are not contiguous in the title", () => {
+    const filter = buildKeywordOrFilter("NCBIB P41");
+    expect(filter).toBeTruthy();
+    expect(filter).toContain("and(or(title.ilike.");
+    expect(filter).toContain("ncbib");
+    expect(filter).toContain("p41");
   });
 
   it("returns null for blank input", () => {

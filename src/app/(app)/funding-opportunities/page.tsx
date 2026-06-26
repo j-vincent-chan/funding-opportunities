@@ -25,6 +25,7 @@ import {
   parseListSort,
   parseClosingDays,
   parsePostedDays,
+  parseUpdatedDays,
   resolveListScope,
   searchParamsToFundingListState,
   type FundingListSortKey,
@@ -56,6 +57,7 @@ import {
   resolveListPostedDate,
   resolveRowLastUpdatedAt,
   isNewWithinDays,
+  isUpdatedWithinDays,
 } from "@/lib/funding-opportunities/funding-opportunity-dates";
 import {
   formatSavedSearchFilterSummary,
@@ -104,6 +106,7 @@ export default async function FundingOpportunitiesPage({
   const activeQuickFilters = quickFiltersFromSearchParams(searchParams);
   const closingDays = parseClosingDays(searchParams) ?? 30;
   const postedDays = parsePostedDays(searchParams) ?? 7;
+  const updatedDays = parseUpdatedDays(searchParams) ?? 7;
   const scope = resolveListScope(searchParams);
   const sortState = parseListSort(searchParams);
   const rdFilterState = parseRdListFilters(searchParams);
@@ -198,6 +201,8 @@ export default async function FundingOpportunitiesPage({
       days,
       postedWithinDays
     );
+  const isRowUpdatedWithinDays = (row: FundingListRow, days: number) =>
+    isUpdatedWithinDays(resolveRowLastUpdatedAt(row), days, postedWithinDays);
 
   function statusRank(bucket: FundingListRowBucket): number {
     if (bucket === "forecasted") return 0;
@@ -233,6 +238,7 @@ export default async function FundingOpportunitiesPage({
     postedWithinDays,
     closingDays,
     postedDays,
+    updatedDays,
   });
 
   const totalFiltered = tabbed.length;
@@ -362,6 +368,11 @@ export default async function FundingOpportunitiesPage({
       week: filtered.filter((row) => isRowNewWithinDays(row, 7)).length,
       month: filtered.filter((row) => isRowNewWithinDays(row, 30)).length,
       quarter: filtered.filter((row) => isRowNewWithinDays(row, 90)).length,
+    },
+    updated: {
+      week: filtered.filter((row) => isRowUpdatedWithinDays(row, 7)).length,
+      month: filtered.filter((row) => isRowUpdatedWithinDays(row, 30)).length,
+      quarter: filtered.filter((row) => isRowUpdatedWithinDays(row, 90)).length,
     },
     esi: filtered.filter((row) => isEsiCareerDevelopment(row)).length,
     collaborative: filtered.filter((row) => looksLargeCollaborativeGrant(row)).length,

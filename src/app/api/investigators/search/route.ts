@@ -6,6 +6,21 @@ const uuid = z.string().uuid();
 
 type InvHit = { id: string; full_name: string; email: string | null };
 
+function nameSearchTokens(q: string): string[] {
+  return q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function applyFullNameTokenSearch<T extends { ilike: (col: string, pattern: string) => T }>(
+  query: T,
+  q: string
+): T {
+  let next = query;
+  for (const token of nameSearchTokens(q)) {
+    next = next.ilike("full_name", `%${token}%`);
+  }
+  return next;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") ?? "").trim();
@@ -33,7 +48,7 @@ export async function GET(req: Request) {
       .limit(300);
 
     if (q.length >= 1) {
-      query = query.ilike("full_name", `%${q}%`);
+      query = applyFullNameTokenSearch(query, q);
     }
 
     const { data, error } = await query;
@@ -51,12 +66,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ results: [] as InvHit[] });
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("investigators")
     .select("id, full_name, email")
-    .ilike("full_name", `%${q}%`)
     .order("full_name", { ascending: true })
     .limit(25);
+
+  query = applyFullNameTokenSearch(query, q);
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

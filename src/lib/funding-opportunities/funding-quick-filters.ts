@@ -2,6 +2,8 @@ import type { SearchParams } from "@/lib/funding-opportunities/rd-list-filters";
 import { fundingListRowScope } from "@/lib/funding-opportunities/funding-list-row-scope";
 import {
   isNewWithinDays,
+  isUpdatedWithinDays,
+  lastUpdatedSortKey,
   newWithinDaysSortKey,
   resolveRowLastUpdatedAt,
 } from "@/lib/funding-opportunities/funding-opportunity-dates";
@@ -23,6 +25,7 @@ const QUICK_FILTER_TAB_SET = new Set<FundingListQuickFilterTab>([
   "recommended",
   "closing_soon",
   "new_this_week",
+  "last_updated",
   "large_awards",
   "esi_career",
   "investigator_initiated",
@@ -61,6 +64,7 @@ type ApplyQuickFiltersContext = {
   postedWithinDays: (iso: string | null, days: number) => boolean;
   closingDays: ClosingSoonDays;
   postedDays: PostedWithinDays;
+  updatedDays: PostedWithinDays;
 };
 
 /**
@@ -92,6 +96,15 @@ export function applyFundingQuickFilters<T extends FundingQuickFilterRow>(
               updatedAt: resolveRowLastUpdatedAt(row),
             },
             ctx.postedDays,
+            ctx.postedWithinDays
+          )
+        );
+        break;
+      case "last_updated":
+        result = result.filter((row) =>
+          isUpdatedWithinDays(
+            resolveRowLastUpdatedAt(row),
+            ctx.updatedDays,
             ctx.postedWithinDays
           )
         );
@@ -133,6 +146,14 @@ export function applyFundingQuickFilters<T extends FundingQuickFilterRow>(
       });
       return bd - ad;
     });
+  }
+
+  if (tabs.length === 1 && tabs[0] === "last_updated") {
+    return [...result].sort(
+      (a, b) =>
+        lastUpdatedSortKey(resolveRowLastUpdatedAt(b)) -
+        lastUpdatedSortKey(resolveRowLastUpdatedAt(a))
+    );
   }
 
   return result;

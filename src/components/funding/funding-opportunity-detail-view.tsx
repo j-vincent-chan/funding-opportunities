@@ -7,6 +7,7 @@ import { ActivityFamilyPills } from "@/components/funding/activity-family-pills"
 import { FundingApplicationMaterialsSection } from "@/components/funding/funding-application-materials-section";
 import { FundingInstrumentPills } from "@/components/funding/funding-instrument-pills";
 import { FundingOpportunityStatusPill } from "@/components/funding/funding-opportunity-status-pill";
+import { MechanismSimilarityPill } from "@/components/funding/mechanism-similarity-pill";
 import { FundingSourceLinkIconButton } from "@/components/funding/funding-source-link-icon-button";
 import { ResearchFitTagPills } from "@/components/funding/research-fit-tag-pills";
 import { formatDate } from "@/lib/formatting/dates";
@@ -135,13 +136,14 @@ function SimilarAwardeesSection({ data }: { data: FundingOpportunityPeekData }) 
         Prior awardees in your watchlist
       </h3>
       <p className="mt-1 text-xs text-[var(--fo-ink-muted)]">
-        Investigators who have received a similar mechanism
-        {data.piBrief.nihInstitutes.length > 0 ? " at a matching NIH institute" : ""} before.
+        Investigators in your watchlist with prior NIH awards at exact, very high, or high taxonomy
+        similarity to this notice&apos;s activity code.
       </p>
       {data.similarAwardees.length === 0 ? (
         <p className="mt-3 text-sm text-[var(--fo-ink-muted)]">
-          No matching prior awards found in cached RePORTER data. Refresh investigator grant caches or
-          broaden mechanism filters.
+          No prior awards with exact or taxonomy-similar mechanisms found in cached RePORTER data.
+          Refresh investigator grant caches or confirm this notice&apos;s activity code is in the
+          mechanism taxonomy.
         </p>
       ) : (
         <ul className="mt-3 space-y-2">
@@ -158,11 +160,16 @@ function SimilarAwardeesSection({ data }: { data: FundingOpportunityPeekData }) 
                       <span className="block text-xs text-[var(--fo-ink-muted)]">{awardee.department}</span>
                     ) : null}
                   </span>
-                  <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--fo-ink-muted)]">
-                    FY {awardee.fiscalYear}
+                  <span className="flex shrink-0 flex-col items-end gap-1.5">
+                    <MechanismSimilarityPill level={awardee.similarityLevel} />
+                    <span className="text-xs font-semibold tabular-nums text-[var(--fo-ink-muted)]">
+                      FY {awardee.fiscalYear}
+                    </span>
                   </span>
                 </div>
-                <p className="mt-1 text-xs font-medium text-[var(--fo-interaction)]">{awardee.projectNum}</p>
+                <p className="mt-1 text-xs font-medium text-[var(--fo-interaction)]">
+                  {awardee.grantActivityCode} · {awardee.projectNum}
+                </p>
                 <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[var(--fo-ink-body)]">
                   {awardee.projectTitle}
                 </p>

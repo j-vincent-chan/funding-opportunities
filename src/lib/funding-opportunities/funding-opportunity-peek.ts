@@ -120,7 +120,7 @@ export async function loadFundingOpportunityPeek(
 
   const [investigatorMatches, similarAwardees, applicationMaterials] = await Promise.all([
     loadPiInvestigatorMatches(supabase, quickTags, 5),
-    loadSimilarGrantAwardees(supabase, fo, quickTags, 8),
+    loadSimilarGrantAwardees(supabase, fo, 8),
     resolveFundingApplicationMaterials({
       opportunityNumber,
       agency: coercePlainTextFromUnknown(fo.agency) || null,

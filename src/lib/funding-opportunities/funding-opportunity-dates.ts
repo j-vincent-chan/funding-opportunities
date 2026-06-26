@@ -156,3 +156,17 @@ export function newWithinDaysSortKey(row: NewWithinDaysRowInput): number {
   }
   return row.postedDate ? new Date(row.postedDate).getTime() : 0;
 }
+
+/** Whether a list row counts as recently updated for week/month/quarter filters. */
+export function isUpdatedWithinDays(
+  updatedAt: string | null,
+  days: number,
+  withinDays: (iso: string | null, days: number) => boolean
+): boolean {
+  return withinDays(updatedAt, days);
+}
+
+/** Sort key for "last updated" filters — most recent source update timestamp. */
+export function lastUpdatedSortKey(updatedAt: string | null): number {
+  return updatedAt ? new Date(updatedAt).getTime() : 0;
+}

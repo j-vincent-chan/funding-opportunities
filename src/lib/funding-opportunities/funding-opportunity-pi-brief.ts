@@ -1,5 +1,12 @@
 import { coercePlainTextFromUnknown } from "@/lib/formatting/coerce-plain-text";
 import {
+  classifyMechanismSimilarity,
+  mechanismSimilarityRank,
+  resolveFundingOpportunityActivityCode,
+  resolveGrantActivityCode,
+  type MechanismSimilarityLevel,
+} from "@/lib/funding-opportunities/mechanism-taxonomy";
+import {
   isEsiCareerDevelopment,
   isInvestigatorInitiated,
   looksLargeCollaborativeGrant,
@@ -12,7 +19,6 @@ import {
 } from "@/lib/funding-opportunities/mechanism-heuristics";
 import { buildPiQuickMatchProfile } from "@/lib/quick-match/normalize-pi";
 import { rankInvestigatorsForOpportunity } from "@/lib/quick-match/engine";
-import { extractOpportunityQuickTags } from "@/lib/quick-match/tag-opportunity";
 import type { QuickMatchBuckets } from "@/lib/quick-match/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -50,7 +56,9 @@ export type SimilarGrantAwardee = {
   projectTitle: string;
   fiscalYear: number;
   icName: string | null;
-  topicOverlap: number;
+  grantActivityCode: string;
+  opportunityActivityCode: string;
+  similarityLevel: MechanismSimilarityLevel;
 };
 
 type FundingOpportunityRow = {
@@ -254,60 +262,87 @@ export function buildPiDecisionBrief(
   };
 }
 
-function activityFamiliesForMatch(fo: FundingOpportunityRow): string[] {
-  const set = new Set<string>();
-  for (const family of fo.activity_families ?? []) {
-    if (family) set.add(family.toUpperCase());
-  }
-  const instrument = coercePlainTextFromUnknown(fo.funding_instrument).toUpperCase();
-  if (instrument.startsWith("R")) set.add("R");
-  if (instrument.startsWith("K")) set.add("K");
-  if (instrument.startsWith("U")) set.add("U");
-  if (instrument.startsWith("P")) set.add("P");
-  if (instrument.startsWith("F")) set.add("F");
-  if (instrument.startsWith("T")) set.add("T");
-  return Array.from(set);
-}
+export async function loadSimilarGrantAwardees(
+  supabase: SupabaseClient,
+  fo: FundingOpportunityRow,
+  limit = 8
+): Promise<SimilarGrantAwardee[]> {
+  const opportunityActivityCode = resolveFundingOpportunityActivityCode({
+    title: fo.title,
+    description: fo.description,
+    opportunity_number: fo.opportunity_number,
+    funding_instrument: fo.funding_instrument,
+  });
 
-function grantMatchesActivityFamily(projectNum: string, families: string[]): boolean {
-  if (families.length === 0) return true;
-  const upper = projectNum.toUpperCase();
-  return families.some((family) => {
-    if (family.length === 1) {
-      return new RegExp(`^[15]?${family}\\d{2}`, "i").test(upper) || upper.includes(family);
+  if (!opportunityActivityCode) {
+    console.warn(
+      "[mechanism-taxonomy] Could not resolve activity code for funding opportunity prior-awardee matching:",
+      JSON.stringify({
+        title: coercePlainTextFromUnknown(fo.title).slice(0, 120),
+        opportunity_number: fo.opportunity_number ?? null,
+      })
+    );
+    return [];
+  }
+
+  const { data: grantRows } = await supabase
+    .from("investigator_nih_grants")
+    .select(
+      "investigator_id, project_num, project_title, fiscal_year, ic_name, investigators(id, full_name, home_department)"
+    )
+    .order("fiscal_year", { ascending: false })
+    .limit(4000);
+
+  const byInvestigator = new Map<string, SimilarGrantAwardee>();
+
+  for (const raw of grantRows ?? []) {
+    const row = raw as unknown as GrantRow;
+    const inv = row.investigators;
+    if (!inv?.id || !row.project_num) continue;
+
+    const grantActivityCode = resolveGrantActivityCode(row.project_num);
+    if (!grantActivityCode) continue;
+
+    const similarityLevel = classifyMechanismSimilarity(opportunityActivityCode, grantActivityCode);
+    if (!similarityLevel) continue;
+
+    const title = row.project_title?.trim() || row.project_num;
+    const existing = byInvestigator.get(inv.id);
+    if (existing) {
+      const existingRank = mechanismSimilarityRank(existing.similarityLevel);
+      const nextRank = mechanismSimilarityRank(similarityLevel);
+      if (
+        nextRank < existingRank ||
+        (nextRank === existingRank &&
+          (existing.fiscalYear > row.fiscal_year ||
+            (existing.fiscalYear === row.fiscal_year && existing.projectNum >= row.project_num)))
+      ) {
+        continue;
+      }
     }
-    return upper.includes(family);
-  });
-}
 
-function icMatchesGrant(icName: string | null, institutes: string[]): boolean {
-  if (!icName || institutes.length === 0) return true;
-  const hay = icName.toUpperCase();
-  return institutes.some((token) => hay.includes(token.toUpperCase()));
-}
+    byInvestigator.set(inv.id, {
+      investigatorId: inv.id,
+      fullName: inv.full_name,
+      department: inv.home_department,
+      projectNum: row.project_num,
+      projectTitle: title,
+      fiscalYear: row.fiscal_year,
+      icName: row.ic_name,
+      grantActivityCode,
+      opportunityActivityCode,
+      similarityLevel,
+    });
+  }
 
-function topicOverlapScore(grantTitle: string, oppTags: QuickMatchBuckets): number {
-  const grantTags = extractOpportunityQuickTags({
-    title: grantTitle,
-    description: null,
-    agency: null,
-    agency_code: null,
-    category: null,
-    funding_instrument: null,
-    applicant_types: null,
-    raw_payload_json: null,
-  });
-  let overlap = 0;
-  for (const tag of oppTags.research_focal_areas) {
-    if (grantTags.research_focal_areas.includes(tag)) overlap += 2;
-  }
-  for (const tag of oppTags.disease_areas) {
-    if (grantTags.disease_areas.includes(tag)) overlap += 2;
-  }
-  for (const tag of oppTags.technical_expertise) {
-    if (grantTags.technical_expertise.includes(tag)) overlap += 1;
-  }
-  return overlap;
+  return Array.from(byInvestigator.values())
+    .sort(
+      (a, b) =>
+        mechanismSimilarityRank(b.similarityLevel) - mechanismSimilarityRank(a.similarityLevel) ||
+        b.fiscalYear - a.fiscalYear ||
+        a.fullName.localeCompare(b.fullName)
+    )
+    .slice(0, limit);
 }
 
 export async function loadPiInvestigatorMatches(
@@ -346,63 +381,4 @@ export async function loadPiInvestigatorMatches(
     department: match.pi.home_department,
     matchScore: match.totalScore,
   }));
-}
-
-export async function loadSimilarGrantAwardees(
-  supabase: SupabaseClient,
-  fo: FundingOpportunityRow,
-  oppTags: QuickMatchBuckets,
-  limit = 8
-): Promise<SimilarGrantAwardee[]> {
-  const families = activityFamiliesForMatch(fo);
-  const institutes = Array.isArray(fo.nih_ic_tokens) ? fo.nih_ic_tokens : [];
-
-  const { data: grantRows } = await supabase
-    .from("investigator_nih_grants")
-    .select(
-      "investigator_id, project_num, project_title, fiscal_year, ic_name, investigators(id, full_name, home_department)"
-    )
-    .order("fiscal_year", { ascending: false })
-    .limit(4000);
-
-  const byInvestigator = new Map<string, SimilarGrantAwardee>();
-
-  for (const raw of grantRows ?? []) {
-    const row = raw as unknown as GrantRow;
-    const inv = row.investigators;
-    if (!inv?.id || !row.project_num) continue;
-    if (!grantMatchesActivityFamily(row.project_num, families)) continue;
-    if (!icMatchesGrant(row.ic_name, institutes)) continue;
-
-    const title = row.project_title?.trim() || row.project_num;
-    const overlap = topicOverlapScore(title, oppTags);
-    const existing = byInvestigator.get(inv.id);
-    if (
-      existing &&
-      (existing.fiscalYear > row.fiscal_year ||
-        (existing.fiscalYear === row.fiscal_year && existing.topicOverlap >= overlap))
-    ) {
-      continue;
-    }
-
-    byInvestigator.set(inv.id, {
-      investigatorId: inv.id,
-      fullName: inv.full_name,
-      department: inv.home_department,
-      projectNum: row.project_num,
-      projectTitle: title,
-      fiscalYear: row.fiscal_year,
-      icName: row.ic_name,
-      topicOverlap: overlap,
-    });
-  }
-
-  return Array.from(byInvestigator.values())
-    .sort(
-      (a, b) =>
-        b.topicOverlap - a.topicOverlap ||
-        b.fiscalYear - a.fiscalYear ||
-        a.fullName.localeCompare(b.fullName)
-    )
-    .slice(0, limit);
 }

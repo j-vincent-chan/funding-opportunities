@@ -33,11 +33,19 @@ const KNOWN_PREFIX = new Set([
   "F31",
   "F32",
   "T32",
+  "DP1",
+  "DP2",
+  "DP5",
 ]);
 
+/** NIH activity codes embedded in RePORTER project numbers (e.g. 1DP2CA259649, 5R01GM123456). */
 export function nihActivityCodeFromProjectNum(projectNum: string | null | undefined): string | null {
   if (!projectNum?.trim()) return null;
   const s = projectNum.replace(/\s+/g, "").toUpperCase();
+
+  const dp = s.match(/\d*(DP\d)(?=[A-Z])/);
+  if (dp?.[1] && (KNOWN_PREFIX.has(dp[1]) || /^DP\d$/.test(dp[1]))) return dp[1];
+
   const m = s.match(/\d*([A-Z]\d{2})(?=[A-Z])/);
   const code = m?.[1] ?? null;
   if (code && (KNOWN_PREFIX.has(code) || /^[A-Z]\d{2}$/.test(code))) return code;
@@ -51,6 +59,7 @@ export function bucketNihMechanism(code: string | null): string {
   if (code.startsWith("P")) return `P-series (${code})`;
   if (code.startsWith("K") || code.startsWith("F") || code.startsWith("T"))
     return `Training / career (${code})`;
+  if (code.startsWith("DP")) return `NIH Director's award (${code})`;
   return code;
 }
 

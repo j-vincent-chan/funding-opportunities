@@ -12,10 +12,15 @@ import {
   updateSavedOpportunityPiMatchAction,
 } from "@/app/actions/opportunity-pipeline-actions";
 import { Button } from "@/components/ui/button";
+import {
+  InvestigatorManualEntryForm,
+  splitInvestigatorNameQuery,
+} from "@/components/investigators/investigator-manual-entry-form";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { coercePlainTextFromUnknown } from "@/lib/formatting/coerce-plain-text";
 import { formatDate } from "@/lib/formatting/dates";
+import { matchInvestigatorRosterQuery } from "@/lib/opportunity-pipeline/investigator-workflow";
 import {
   MATCH_STRENGTHS,
   OUTREACH_STATUSES,
@@ -150,6 +155,9 @@ export function TriageCommunityPiPanel({
   opportunityCommunities = [],
   hideHeader = false,
   showCommunityOnRoster = false,
+  researchCommunities = [],
+  defaultResearchCommunityId = null,
+  onInvestigatorCreated,
 }: {
   opportunityId: string;
   communityLabel: string;
@@ -168,6 +176,12 @@ export function TriageCommunityPiPanel({
   hideHeader?: boolean;
   /** When rosters from multiple tagged communities are merged, show community under each name. */
   showCommunityOnRoster?: boolean;
+  /** Research communities available for manual entry assignment. */
+  researchCommunities?: { id: string; label: string }[];
+  /** Default community when creating a new investigator from triage. */
+  defaultResearchCommunityId?: string | null;
+  /** Called after a new investigator is created so the parent can refresh the roster. */
+  onInvestigatorCreated?: (hit: CommunityInvestigatorHit) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -201,12 +215,9 @@ export function TriageCommunityPiPanel({
   }, [fo?.agency, fo?.funding_instrument]);
 
   const filteredRoster = useMemo(() => {
-    const q = rosterFilter.trim().toLowerCase();
-    if (!q) return roster;
-    return roster.filter(
-      (r) =>
-        (r.full_name ?? "").toLowerCase().includes(q) ||
-        (r.email ?? "").toLowerCase().includes(q)
+    if (!rosterFilter.trim()) return roster;
+    return roster.filter((r) =>
+      matchInvestigatorRosterQuery(r.full_name ?? "", r.email, rosterFilter)
     );
   }, [roster, rosterFilter]);
 
@@ -598,6 +609,35 @@ export function TriageCommunityPiPanel({
                 );
               })
             )}
+          </div>
+          <div className={`shrink-0 ${compact ? "mt-3" : "mt-4"}`}>
+            <InvestigatorManualEntryForm
+              compact
+              communities={researchCommunities}
+              defaultResearchCommunityId={defaultResearchCommunityId}
+              defaultValues={
+                rosterFilter.trim() ? splitInvestigatorNameQuery(rosterFilter) : undefined
+              }
+              submitLabel="Create & link"
+              onCreated={({ investigatorId, full_name }) => {
+                const hit: CommunityInvestigatorHit = {
+                  id: investigatorId,
+                  full_name,
+                  email: null,
+                  community_label:
+                    researchCommunities.find((c) => c.id === defaultResearchCommunityId)?.label ?? null,
+                };
+                onInvestigatorCreated?.(hit);
+                startTransition(async () => {
+                  const r = await addSavedOpportunityPiMatchAction({
+                    opportunityId,
+                    investigatorId,
+                  });
+                  if (!r.ok) window.alert(r.error);
+                  else refresh();
+                });
+              }}
+            />
           </div>
         </section>
 

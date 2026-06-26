@@ -66,6 +66,46 @@ describe("fundingListHref stacked tabs", () => {
     expect(state.tabs).toEqual(["esi_career", "closing_soon"]);
     expect(state.closingDays).toBe(60);
   });
+
+  it("round-trips last_updated tab with updated_days", () => {
+    const href = fundingListHref({
+      q: "",
+      scope: "all",
+      tabs: ["last_updated"],
+      updatedDays: 30,
+      sort: "posted_date",
+      order: "desc",
+      page: 1,
+      perPage: 50,
+      departments: ["hhs"],
+      departmentSubs: { hhs: ["nih"] },
+      legacyAgencies: [],
+      allDepartments: false,
+      rd: {
+        activityFamilies: [],
+        clinicalTrialMode: null,
+        nihIc: [],
+        announcement: [],
+        pathway: [],
+        investigatorTags: [],
+        mechanismTypes: [],
+        collaborations: [],
+        humanSubjects: [],
+      },
+    });
+    expect(href).toContain("tab=last_updated");
+    expect(href).toContain("updated_days=30");
+    const query = href.split("?")[1] ?? "";
+    const params = new URLSearchParams(query);
+    const record: Record<string, string | string[]> = {};
+    for (const key of new Set(params.keys())) {
+      const all = params.getAll(key);
+      record[key] = all.length === 1 ? all[0]! : all;
+    }
+    const state = searchParamsToFundingListState(record);
+    expect(state.tabs).toEqual(["last_updated"]);
+    expect(state.updatedDays).toBe(30);
+  });
 });
 
 describe("applyFundingQuickFilters", () => {
@@ -89,9 +129,10 @@ describe("applyFundingQuickFilters", () => {
       postedWithinDays,
       closingDays: 30,
       postedDays: 7,
+      updatedDays: 7,
     });
     expect(result).toHaveLength(0);
-    expect(applyFundingQuickFilters(rows, ["esi_career"], { today, inDays, postedWithinDays, closingDays: 30, postedDays: 7 })).toHaveLength(1);
+    expect(applyFundingQuickFilters(rows, ["esi_career"], { today, inDays, postedWithinDays, closingDays: 30, postedDays: 7, updatedDays: 7 })).toHaveLength(1);
   });
 });
 
