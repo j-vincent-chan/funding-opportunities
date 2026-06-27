@@ -4,7 +4,7 @@ import {
   isFundingListQuickFilterTab,
   quickFiltersFromSearchParams,
 } from "./funding-quick-filters";
-import { fundingListHref, searchParamsToFundingListState, defaultFundingListClientState, isNihDepartmentFilterActive, nihDepartmentFilterPatch } from "./funding-list-url";
+import { fundingListHref, searchParamsToFundingListState, defaultFundingListClientState, isNihDepartmentFilterActive, nihDepartmentFilterPatch, quickFilterSidebarResetPatch } from "./funding-list-url";
 
 describe("quickFiltersFromSearchParams", () => {
   it("parses a single tab param", () => {
@@ -146,24 +146,35 @@ describe("defaultFundingListClientState", () => {
   });
 });
 
-describe("nihDepartmentFilterPatch", () => {
-  it("selects DHHS with NIH only", () => {
-    const patch = nihDepartmentFilterPatch();
-    expect(patch).toEqual({
-      departments: ["hhs"],
-      departmentSubs: { hhs: ["nih"] },
-      legacyAgencies: [],
-      allDepartments: false,
-      noDepartmentsSelected: false,
+describe("nih quick filter tab", () => {
+  it("selects DHHS with NIH and round-trips tab=nih", () => {
+    const href = fundingListHref({
+      ...defaultFundingListClientState(),
+      tabs: ["nih", "esi_career"],
+      ...nihDepartmentFilterPatch(),
     });
-    expect(isNihDepartmentFilterActive({ ...defaultFundingListClientState(), ...patch })).toBe(true);
-    expect(isNihDepartmentFilterActive(defaultFundingListClientState())).toBe(false);
+    expect(href).toContain("tab=nih");
+    expect(href).toContain("tab=esi_career");
+    expect(href).toContain("dept=hhs");
+    expect(href).toContain("sub=hhs%3Anih");
+    const query = href.split("?")[1] ?? "";
+    const state = searchParamsToFundingListState(
+      Object.fromEntries(new URLSearchParams(query))
+    );
+    expect(state.tabs).toEqual(["nih", "esi_career"]);
+    expect(isNihDepartmentFilterActive(state)).toBe(true);
+  });
+
+  it("preserves NIH departments when sidebar resets with nih tab stacked", () => {
+    const patch = quickFilterSidebarResetPatch(["nih", "closing_soon"]);
+    expect(patch).toMatchObject(nihDepartmentFilterPatch());
   });
 });
 
 describe("isFundingListQuickFilterTab", () => {
   it("accepts stackable tabs only", () => {
     expect(isFundingListQuickFilterTab("esi_career")).toBe(true);
+    expect(isFundingListQuickFilterTab("nih")).toBe(true);
     expect(isFundingListQuickFilterTab("all")).toBe(false);
     expect(isFundingListQuickFilterTab("immunology_translational")).toBe(false);
   });

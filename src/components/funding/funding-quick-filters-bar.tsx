@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   defaultSidebarFilterPatch,
-  isNihDepartmentFilterActive,
   nihDepartmentFilterPatch,
   type FundingListClientState,
 } from "@/lib/funding-opportunities/funding-list-url";
@@ -297,15 +296,19 @@ export function FundingQuickFiltersBar({
   const newActive = newFilterActive || openMenu === "new";
   const updatedFilterActive = isQuickFilterActive(activeTabs, "last_updated");
   const updatedActive = updatedFilterActive || openMenu === "last_updated";
-  const nihActive = isNihDepartmentFilterActive(state);
+  const nihActive = isQuickFilterActive(activeTabs, "nih");
   const esiActive = isQuickFilterActive(activeTabs, "esi_career");
   const collaborativeActive = isQuickFilterActive(activeTabs, "large_awards");
   const investigatorActive = isQuickFilterActive(activeTabs, "investigator_initiated");
   const foundationsActive = isQuickFilterActive(activeTabs, "foundations");
 
   const toggleNihFilter = useCallback(() => {
-    navigate(nihActive ? defaultSidebarFilterPatch() : nihDepartmentFilterPatch());
-  }, [navigate, nihActive]);
+    const turningOff = nihActive;
+    navigate({
+      tabs: toggleQuickFilterTab(activeTabs, "nih"),
+      ...(turningOff ? defaultSidebarFilterPatch() : nihDepartmentFilterPatch()),
+    });
+  }, [activeTabs, navigate, nihActive]);
 
   const shellClass =
     variant === "embedded"

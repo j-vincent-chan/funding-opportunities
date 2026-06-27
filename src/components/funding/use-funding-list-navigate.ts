@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DEFAULT_FUNDING_LIST_PAGE,
-  defaultSidebarFilterPatch,
   fundingListHref,
   isDepartmentSubsEmpty,
+  quickFilterSidebarResetPatch,
   searchParamsToFundingListState,
   urlSearchParamsToRecord,
   type FundingListClientState,
@@ -67,7 +67,7 @@ export function useFundingListNavigate(): {
         const base = searchParamsToFundingListState(urlSearchParamsToRecord(params));
         let next = mergeFundingListClientState(base, patch);
         if (options?.resetSidebar && !next.savedSearchId) {
-          next = mergeFundingListClientState(next, defaultSidebarFilterPatch());
+          next = mergeFundingListClientState(next, quickFilterSidebarResetPatch(next.tabs));
         }
         if (patch.page === undefined) {
           next.page = DEFAULT_FUNDING_LIST_PAGE;
@@ -108,7 +108,7 @@ export function useFundingListOptimisticState(): {
       const base = displayStateRef.current;
       let next = mergeFundingListClientState(base, patch);
       if (options?.resetSidebar && !next.savedSearchId) {
-        next = mergeFundingListClientState(next, defaultSidebarFilterPatch());
+        next = mergeFundingListClientState(next, quickFilterSidebarResetPatch(next.tabs));
       }
       if (patch.page === undefined) {
         next.page = DEFAULT_FUNDING_LIST_PAGE;

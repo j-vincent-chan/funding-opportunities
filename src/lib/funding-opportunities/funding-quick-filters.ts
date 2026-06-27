@@ -27,6 +27,7 @@ const QUICK_FILTER_TAB_SET = new Set<FundingListQuickFilterTab>([
   "new_this_week",
   "last_updated",
   "large_awards",
+  "nih",
   "esi_career",
   "investigator_initiated",
   "foundations",
@@ -120,6 +121,8 @@ export function applyFundingQuickFilters<T extends FundingQuickFilterRow>(
         break;
       case "foundations":
         result = result.filter((row) => isFoundationOpportunity(row));
+        break;
+      case "nih":
         break;
       default:
         break;

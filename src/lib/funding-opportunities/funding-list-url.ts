@@ -48,6 +48,7 @@ export type FundingListViewTab =
   | "esi_career"
   | "investigator_initiated"
   | "foundations"
+  | "nih"
   | "immunology_translational";
 
 /** Allowed results-per-page values for the funding list. */
@@ -158,6 +159,29 @@ export function defaultSidebarFilterPatch(): Pick<
   };
 }
 
+/** Sidebar reset when stacking quick filters — keeps NIH agency selection when `tab=nih` is active. */
+export function quickFilterSidebarResetPatch(
+  tabs: FundingListQuickFilterTab[]
+): Pick<
+  FundingListClientState,
+  "departments" | "departmentSubs" | "legacyAgencies" | "allDepartments" | "noDepartmentsSelected" | "rd"
+> {
+  const patch = defaultSidebarFilterPatch();
+  if (tabs.includes("nih")) {
+    Object.assign(patch, nihDepartmentFilterPatch());
+  }
+  return patch;
+}
+
+/** Keep URL department params aligned with the stackable NIH quick filter tab. */
+export function syncNihQuickFilterDepartments(state: FundingListClientState): FundingListClientState {
+  if (!state.tabs.includes("nih")) return state;
+  return {
+    ...state,
+    ...nihDepartmentFilterPatch(),
+  };
+}
+
 export function fundingListDefaultHref(): string {
   return fundingListHref(defaultFundingListClientState());
 }
@@ -202,7 +226,7 @@ export function mergeFundingListLayers(
   quick: FundingListQuickFilterLayer,
   savedSearchId?: string | null
 ): FundingListClientState {
-  return {
+  return syncNihQuickFilterDepartments({
     ...core,
     tabs: quick.tabs,
     closingDays: quick.closingDays,
@@ -210,7 +234,7 @@ export function mergeFundingListLayers(
     updatedDays: quick.updatedDays,
     savedSearchId: savedSearchId ?? null,
     page: DEFAULT_FUNDING_LIST_PAGE,
-  };
+  });
 }
 
 export function parseFundingListHref(href: string): FundingListClientState {
@@ -528,55 +552,56 @@ export function deactivateSavedSearchHrefForState(
 }
 
 export function fundingListHref(state: FundingListClientState): string {
+  const synced = syncNihQuickFilterDepartments(state);
   const p = new URLSearchParams();
-  if (state.savedSearchId) p.set(FUNDING_SAVED_SEARCH_PARAM, state.savedSearchId);
-  if (state.q.trim()) p.set("q", state.q.trim());
-  p.set("scope", state.scope);
-  for (const tab of state.tabs) {
+  if (synced.savedSearchId) p.set(FUNDING_SAVED_SEARCH_PARAM, synced.savedSearchId);
+  if (synced.q.trim()) p.set("q", synced.q.trim());
+  p.set("scope", synced.scope);
+  for (const tab of synced.tabs) {
     p.append("tab", tab);
   }
-  if (state.tabs.includes("closing_soon") && state.closingDays) {
-    p.set("closing_days", String(state.closingDays));
+  if (synced.tabs.includes("closing_soon") && synced.closingDays) {
+    p.set("closing_days", String(synced.closingDays));
   }
-  if (state.tabs.includes("new_this_week") && state.postedDays) {
-    p.set("posted_days", String(state.postedDays));
+  if (synced.tabs.includes("new_this_week") && synced.postedDays) {
+    p.set("posted_days", String(synced.postedDays));
   }
-  if (state.tabs.includes("last_updated") && state.updatedDays) {
-    p.set("updated_days", String(state.updatedDays));
+  if (synced.tabs.includes("last_updated") && synced.updatedDays) {
+    p.set("updated_days", String(synced.updatedDays));
   }
-  p.set("sort", state.sort);
-  p.set("order", state.order);
-  if (state.page > DEFAULT_FUNDING_LIST_PAGE) p.set("page", String(state.page));
-  if (state.perPage !== DEFAULT_FUNDING_LIST_PER_PAGE) p.set("per", String(state.perPage));
+  p.set("sort", synced.sort);
+  p.set("order", synced.order);
+  if (synced.page > DEFAULT_FUNDING_LIST_PAGE) p.set("page", String(synced.page));
+  if (synced.perPage !== DEFAULT_FUNDING_LIST_PER_PAGE) p.set("per", String(synced.perPage));
   if (
-    state.allDepartments &&
-    state.departments.length === 0 &&
-    isDepartmentSubsEmpty(state.departmentSubs) &&
-    state.legacyAgencies.length === 0
+    synced.allDepartments &&
+    synced.departments.length === 0 &&
+    isDepartmentSubsEmpty(synced.departmentSubs) &&
+    synced.legacyAgencies.length === 0
   ) {
     p.set("dept", "all");
   } else if (
-    state.noDepartmentsSelected &&
-    state.departments.length === 0 &&
-    isDepartmentSubsEmpty(state.departmentSubs) &&
-    state.legacyAgencies.length === 0
+    synced.noDepartmentsSelected &&
+    synced.departments.length === 0 &&
+    isDepartmentSubsEmpty(synced.departmentSubs) &&
+    synced.legacyAgencies.length === 0
   ) {
     p.set("dept", "none");
   } else {
-    for (const d of state.departments) {
+    for (const d of synced.departments) {
       p.append("dept", d);
     }
-    for (const [dept, subs] of Object.entries(state.departmentSubs)) {
+    for (const [dept, subs] of Object.entries(synced.departmentSubs)) {
       if (!subs || subs.length === 0) continue;
       for (const sid of subs) {
         p.append("sub", `${dept}:${sid}`);
       }
     }
-    for (const a of state.legacyAgencies) {
+    for (const a of synced.legacyAgencies) {
       p.append("agency", a);
     }
   }
-  appendRdListFiltersToUrlSearchParams(p, state.rd);
+  appendRdListFiltersToUrlSearchParams(p, synced.rd);
   const s = p.toString();
   return s ? `/funding-opportunities?${s}` : "/funding-opportunities";
 }

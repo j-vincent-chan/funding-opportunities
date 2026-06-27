@@ -26,6 +26,7 @@ const TABS = new Set<FundingListViewTab>([
   "esi_career",
   "investigator_initiated",
   "foundations",
+  "nih",
   "immunology_translational",
 ]);
 
@@ -186,6 +187,7 @@ const TAB_LABELS: Partial<Record<FundingListViewTab, string>> = {
   esi_career: "ESI career",
   investigator_initiated: "Investigator-initiated",
   foundations: "Foundations",
+  nih: "NIH",
   immunology_translational: "Immunology translational",
 };
 
@@ -200,9 +202,13 @@ export function suggestSavedSearchName(state: FundingListClientState): string {
       parts.push(TAB_LABELS[tab] ?? tab);
     }
   }
-  if (state.departments.includes("hhs") && (state.departmentSubs.hhs ?? []).includes("nih")) {
+  if (
+    !state.tabs.includes("nih") &&
+    state.departments.includes("hhs") &&
+    (state.departmentSubs.hhs ?? []).includes("nih")
+  ) {
     parts.push("NIH");
-  } else if (state.departments.length > 0) {
+  } else if (state.departments.length > 0 && !state.tabs.includes("nih")) {
     parts.push(state.departments.map((d) => d.toUpperCase()).join(", "));
   }
   if (state.scope === "open") parts.push("Open only");
