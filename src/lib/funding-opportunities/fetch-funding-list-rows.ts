@@ -26,14 +26,13 @@ export type FundingListDbRow = {
   funding_instrument: string | null;
   status: string | null;
   forecasted: boolean | null;
-  raw_payload_json?: unknown;
   source_system?: string | null;
   source_opportunity_id?: string | null;
   activity_families?: string[] | null;
 };
 
 const fundingListSelectBase =
-  "id, title, agency, agency_code, close_date, posted_date, updated_at, funding_instrument, status, forecasted, raw_payload_json, source_system, source_opportunity_id";
+  "id, title, agency, agency_code, close_date, posted_date, updated_at, funding_instrument, status, forecasted, source_system, source_opportunity_id";
 const fundingListSelectWithHeuristics = `${fundingListSelectBase}, activity_families`;
 
 type BuildQueryOpts = {

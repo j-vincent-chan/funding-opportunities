@@ -71,11 +71,6 @@ export function FundingListToolbar({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 overflow-visible px-5 py-3 sm:px-6">
         <FundingQuickFiltersBar counts={counts} variant="embedded" />
         {showSavedSearches ? (
-          <>
-            <div
-              className="hidden h-7 w-px shrink-0 bg-[var(--fo-border)] md:block"
-              aria-hidden
-            />
             <FundingSavedSearchesStrip
               savedSearches={savedSearches}
               rdsgOwners={rdsgOwners}
@@ -85,7 +80,6 @@ export function FundingListToolbar({
               loadedSavedSearchId={loadedSavedSearchId}
               setLoadedSavedSearchId={setLoadedSavedSearchId}
             />
-          </>
         ) : null}
       </div>
       {activeSearch ? (

@@ -1,21 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
-  DEFAULT_FUNDING_LIST_PAGE,
   defaultSidebarFilterPatch,
-  fundingListHref,
   isNihDepartmentFilterActive,
   nihDepartmentFilterPatch,
-  searchParamsToFundingListState,
-  urlSearchParamsToRecord,
   type FundingListClientState,
 } from "@/lib/funding-opportunities/funding-list-url";
 import {
   isQuickFilterActive,
   type FundingListQuickFilterTab,
 } from "@/lib/funding-opportunities/funding-quick-filters";
+import { useFundingListOptimisticState } from "@/components/funding/use-funding-list-navigate";
 
 export type FundingQuickFiltersCounts = {
   matched: number;
@@ -228,12 +224,10 @@ export function FundingQuickFiltersBar({
   counts: FundingQuickFiltersCounts;
   variant?: "standalone" | "embedded";
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const { state, commitNavigation, isPending } = useFundingListOptimisticState();
   const rootRef = useRef<HTMLDivElement>(null);
   const [openMenu, setOpenMenu] = useState<"closing" | "scope" | "new" | "last_updated" | null>(null);
 
-  const state = searchParamsToFundingListState(urlSearchParamsToRecord(searchParams));
   const activeTabs = state.tabs;
   const scope = state.scope;
   const closingDays = state.closingDays ?? 30;
@@ -242,22 +236,10 @@ export function FundingQuickFiltersBar({
 
   const navigate = useCallback(
     (patch: Partial<FundingListClientState>, options?: { resetSidebar?: boolean }) => {
-      const record =
-        typeof window !== "undefined"
-          ? urlSearchParamsToRecord(new URLSearchParams(window.location.search))
-          : urlSearchParamsToRecord(searchParams);
-      const latestState = searchParamsToFundingListState(record);
-      router.push(
-        fundingListHref({
-          ...latestState,
-          ...(options?.resetSidebar && !latestState.savedSearchId ? defaultSidebarFilterPatch() : {}),
-          ...patch,
-          page: DEFAULT_FUNDING_LIST_PAGE,
-        })
-      );
+      commitNavigation(patch, options);
       setOpenMenu(null);
     },
-    [router, searchParams]
+    [commitNavigation]
   );
 
   const toggleQuickFilter = useCallback(
@@ -331,7 +313,7 @@ export function FundingQuickFiltersBar({
       : "border-y border-[var(--fo-divider)] bg-[var(--fo-paper-2)] px-5 py-3 sm:px-6";
 
   return (
-    <div ref={rootRef} className={shellClass}>
+    <div ref={rootRef} className={shellClass} aria-busy={isPending || undefined}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="mr-0.5 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.12em] text-[var(--fo-interaction)]">
           <FunnelIcon />
@@ -560,14 +542,13 @@ export function FundingQuickFiltersBar({
             type="button"
             aria-expanded={openMenu === "closing"}
             onClick={() => setOpenMenu((m) => (m === "closing" ? null : "closing"))}
-            className={pillClasses("red", closingActive)}
+            className={pillClasses("neutral", closingActive)}
           >
             <ClockIcon />
             <span>{closingFilterActive ? `Closing in ${closingLabel}` : "Closing soon"}</span>
             <PillCount
               count={closingFilterActive ? closingCount : counts.closing.d30}
               active={closingActive}
-              tone="red"
             />
             <ChevronDown className="h-4 w-4 opacity-70" />
           </button>

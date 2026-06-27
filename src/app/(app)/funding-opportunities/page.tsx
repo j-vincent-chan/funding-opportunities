@@ -99,6 +99,8 @@ const SORT_COLUMNS: FundingListSortKey[] = [
   "funding_instrument",
 ];
 
+export const maxDuration = 60;
+
 export default async function FundingOpportunitiesPage({
   searchParams,
 }: {
@@ -423,12 +425,10 @@ export default async function FundingOpportunitiesPage({
       postedDate: resolveListPostedDate({
         statusBucket: bucket,
         postedDate: row.posted_date,
-        rawPayload: row.raw_payload_json,
       }),
       estimatedOpenDate: resolveEstimatedOpenDate({
         statusBucket: bucket,
         postedDate: row.posted_date,
-        rawPayload: row.raw_payload_json,
       }),
       updatedAt: resolveRowLastUpdatedAt(row),
       closeDate: row.close_date,
