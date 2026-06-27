@@ -47,6 +47,21 @@ export function mergeFundingListClientState(
   return next;
 }
 
+export function buildNextFundingListState(
+  base: FundingListClientState,
+  patch: Partial<FundingListClientState>,
+  options?: { resetSidebar?: boolean }
+): FundingListClientState {
+  let next = mergeFundingListClientState(base, patch);
+  if (options?.resetSidebar && !next.savedSearchId) {
+    next = mergeFundingListClientState(next, quickFilterSidebarResetPatch(next.tabs));
+  }
+  if (patch.page === undefined) {
+    next.page = DEFAULT_FUNDING_LIST_PAGE;
+  }
+  return next;
+}
+
 /**
  * URL updates for the funding list. Uses startTransition so the UI stays responsive
  * while the App Router fetches the next server-rendered page.
@@ -65,13 +80,7 @@ export function useFundingListNavigate(): {
       startTransition(() => {
         const params = new URLSearchParams(window.location.search.slice(1));
         const base = searchParamsToFundingListState(urlSearchParamsToRecord(params));
-        let next = mergeFundingListClientState(base, patch);
-        if (options?.resetSidebar && !next.savedSearchId) {
-          next = mergeFundingListClientState(next, quickFilterSidebarResetPatch(next.tabs));
-        }
-        if (patch.page === undefined) {
-          next.page = DEFAULT_FUNDING_LIST_PAGE;
-        }
+        const next = buildNextFundingListState(base, patch, options);
         router.replace(fundingListHref(next), { scroll: false });
       });
     },
@@ -90,7 +99,8 @@ export function useFundingListOptimisticState(): {
   isPending: boolean;
 } {
   const sp = useSearchParams();
-  const { navigate, isPending } = useFundingListNavigate();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const urlState = useMemo(
     () => searchParamsToFundingListState(urlSearchParamsToRecord(new URLSearchParams(sp.toString()))),
     [sp]
@@ -105,19 +115,14 @@ export function useFundingListOptimisticState(): {
 
   const commitNavigation = useCallback(
     (patch: Partial<FundingListClientState>, options?: { resetSidebar?: boolean }) => {
-      const base = displayStateRef.current;
-      let next = mergeFundingListClientState(base, patch);
-      if (options?.resetSidebar && !next.savedSearchId) {
-        next = mergeFundingListClientState(next, quickFilterSidebarResetPatch(next.tabs));
-      }
-      if (patch.page === undefined) {
-        next.page = DEFAULT_FUNDING_LIST_PAGE;
-      }
+      const next = buildNextFundingListState(displayStateRef.current, patch, options);
       displayStateRef.current = next;
       setOptimisticState(next);
-      navigate(patch, options);
+      startTransition(() => {
+        router.replace(fundingListHref(next), { scroll: false });
+      });
     },
-    [navigate]
+    [router]
   );
 
   return {
@@ -137,7 +142,8 @@ export function useFundingListFilterState(): {
   isPending: boolean;
 } {
   const sp = useSearchParams();
-  const { navigate, isPending } = useFundingListNavigate();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const urlState = useMemo(
     () => searchParamsToFundingListState(urlSearchParamsToRecord(new URLSearchParams(sp.toString()))),
     [sp]
@@ -152,13 +158,14 @@ export function useFundingListFilterState(): {
 
   const commitFilter = useCallback(
     (patch: Partial<FundingListClientState>) => {
-      const base = displayStateRef.current;
-      const next = mergeFundingListClientState(base, patch);
+      const next = mergeFundingListClientState(displayStateRef.current, patch);
       displayStateRef.current = next;
       setOptimisticState(next);
-      navigate(patch);
+      startTransition(() => {
+        router.replace(fundingListHref(next), { scroll: false });
+      });
     },
-    [navigate]
+    [router]
   );
 
   return {

@@ -4,6 +4,7 @@ import {
   isFundingListQuickFilterTab,
   quickFiltersFromSearchParams,
 } from "./funding-quick-filters";
+import { buildNextFundingListState } from "@/components/funding/use-funding-list-navigate";
 import { fundingListHref, searchParamsToFundingListState, defaultFundingListClientState, isNihDepartmentFilterActive, nihDepartmentFilterPatch, quickFilterSidebarResetPatch } from "./funding-list-url";
 
 describe("quickFiltersFromSearchParams", () => {
@@ -168,6 +169,29 @@ describe("nih quick filter tab", () => {
   it("preserves NIH departments when sidebar resets with nih tab stacked", () => {
     const patch = quickFilterSidebarResetPatch(["nih", "closing_soon"]);
     expect(patch).toMatchObject(nihDepartmentFilterPatch());
+  });
+
+  it("stacks NIH with new this week in the navigated URL", () => {
+    const nihState = buildNextFundingListState(
+      defaultFundingListClientState(),
+      { tabs: ["nih"], ...nihDepartmentFilterPatch() }
+    );
+    const stacked = buildNextFundingListState(
+      nihState,
+      { tabs: ["nih", "new_this_week"], postedDays: 7 },
+      { resetSidebar: true }
+    );
+    const href = fundingListHref(stacked);
+    expect(href).toContain("tab=nih");
+    expect(href).toContain("tab=new_this_week");
+    expect(href).toContain("posted_days=7");
+    expect(href).toContain("dept=hhs");
+    const state = searchParamsToFundingListState(
+      Object.fromEntries(new URLSearchParams(href.split("?")[1] ?? ""))
+    );
+    expect(state.tabs).toEqual(["nih", "new_this_week"]);
+    expect(state.postedDays).toBe(7);
+    expect(isNihDepartmentFilterActive(state)).toBe(true);
   });
 });
 

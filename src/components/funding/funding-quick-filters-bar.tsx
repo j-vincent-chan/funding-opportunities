@@ -381,7 +381,19 @@ export function FundingQuickFiltersBar({
                 ? `New filter active: ${newLabel}. Open menu to change or clear.`
                 : "Filter by newly posted opportunities this week"
             }
-            onClick={() => setOpenMenu((m) => (m === "new" ? null : "new"))}
+            onClick={() => {
+              if (newFilterActive) {
+                setOpenMenu((m) => (m === "new" ? null : "new"));
+                return;
+              }
+              navigate(
+                {
+                  tabs: addQuickFilterTab(activeTabs, "new_this_week"),
+                  postedDays: 7,
+                },
+                { resetSidebar: true }
+              );
+            }}
             className={pillClasses(newFilterActive ? "teal" : "neutral", newActive)}
           >
             <BellIcon />
