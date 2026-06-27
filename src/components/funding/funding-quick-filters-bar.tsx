@@ -6,6 +6,8 @@ import {
   DEFAULT_FUNDING_LIST_PAGE,
   defaultSidebarFilterPatch,
   fundingListHref,
+  isNihDepartmentFilterActive,
+  nihDepartmentFilterPatch,
   searchParamsToFundingListState,
   urlSearchParamsToRecord,
   type FundingListClientState,
@@ -21,6 +23,7 @@ export type FundingQuickFiltersCounts = {
   scope: { all: number; open: number; forecasted: number };
   new: { week: number; month: number; quarter: number };
   updated: { week: number; month: number; quarter: number };
+  nih: number;
   esi: number;
   collaborative: number;
   investigatorInitiated: number;
@@ -312,10 +315,15 @@ export function FundingQuickFiltersBar({
   const newActive = newFilterActive || openMenu === "new";
   const updatedFilterActive = isQuickFilterActive(activeTabs, "last_updated");
   const updatedActive = updatedFilterActive || openMenu === "last_updated";
+  const nihActive = isNihDepartmentFilterActive(state);
   const esiActive = isQuickFilterActive(activeTabs, "esi_career");
   const collaborativeActive = isQuickFilterActive(activeTabs, "large_awards");
   const investigatorActive = isQuickFilterActive(activeTabs, "investigator_initiated");
   const foundationsActive = isQuickFilterActive(activeTabs, "foundations");
+
+  const toggleNihFilter = useCallback(() => {
+    navigate(nihActive ? defaultSidebarFilterPatch() : nihDepartmentFilterPatch());
+  }, [navigate, nihActive]);
 
   const shellClass =
     variant === "embedded"
@@ -341,88 +349,6 @@ export function FundingQuickFiltersBar({
         </button>
 
         <PillDivider />
-
-        <div className="relative">
-          <button
-            type="button"
-            aria-expanded={openMenu === "closing"}
-            onClick={() => setOpenMenu((m) => (m === "closing" ? null : "closing"))}
-            className={pillClasses("red", closingActive)}
-          >
-            <ClockIcon />
-            <span>{closingFilterActive ? `Closing in ${closingLabel}` : "Closing soon"}</span>
-            <PillCount
-              count={closingFilterActive ? closingCount : counts.closing.d30}
-              active={closingActive}
-              tone="red"
-            />
-            <ChevronDown className="h-4 w-4 opacity-70" />
-          </button>
-          <DropdownMenu open={openMenu === "closing"}>
-            <DropdownItem
-              label="30 days"
-              count={counts.closing.d30}
-              countClassName="text-red-700"
-              selected={closingFilterActive && closingDays === 30}
-              onSelect={() => {
-                if (closingFilterActive && closingDays === 30) {
-                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
-                  return;
-                }
-                navigate(
-                  {
-                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
-                    closingDays: 30,
-                  },
-                  { resetSidebar: true }
-                );
-              }}
-            />
-            <DropdownItem
-              label="60 days"
-              count={counts.closing.d60}
-              countClassName="text-amber-700"
-              selected={closingFilterActive && closingDays === 60}
-              onSelect={() => {
-                if (closingFilterActive && closingDays === 60) {
-                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
-                  return;
-                }
-                navigate(
-                  {
-                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
-                    closingDays: 60,
-                  },
-                  { resetSidebar: true }
-                );
-              }}
-            />
-            <DropdownItem
-              label="90 days"
-              count={counts.closing.d90}
-              countClassName="text-sky-700"
-              selected={closingFilterActive && closingDays === 90}
-              onSelect={() => {
-                if (closingFilterActive && closingDays === 90) {
-                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
-                  return;
-                }
-                navigate(
-                  {
-                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
-                    closingDays: 90,
-                  },
-                  { resetSidebar: true }
-                );
-              }}
-            />
-            {closingFilterActive ? (
-              <DropdownClearFilter
-                onSelect={() => navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") })}
-              />
-            ) : null}
-          </DropdownMenu>
-        </div>
 
         <div className="relative">
           <button
@@ -629,7 +555,98 @@ export function FundingQuickFiltersBar({
           </DropdownMenu>
         </div>
 
+        <div className="relative">
+          <button
+            type="button"
+            aria-expanded={openMenu === "closing"}
+            onClick={() => setOpenMenu((m) => (m === "closing" ? null : "closing"))}
+            className={pillClasses("red", closingActive)}
+          >
+            <ClockIcon />
+            <span>{closingFilterActive ? `Closing in ${closingLabel}` : "Closing soon"}</span>
+            <PillCount
+              count={closingFilterActive ? closingCount : counts.closing.d30}
+              active={closingActive}
+              tone="red"
+            />
+            <ChevronDown className="h-4 w-4 opacity-70" />
+          </button>
+          <DropdownMenu open={openMenu === "closing"}>
+            <DropdownItem
+              label="30 days"
+              count={counts.closing.d30}
+              countClassName="text-red-700"
+              selected={closingFilterActive && closingDays === 30}
+              onSelect={() => {
+                if (closingFilterActive && closingDays === 30) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
+                    closingDays: 30,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
+            />
+            <DropdownItem
+              label="60 days"
+              count={counts.closing.d60}
+              countClassName="text-amber-700"
+              selected={closingFilterActive && closingDays === 60}
+              onSelect={() => {
+                if (closingFilterActive && closingDays === 60) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
+                    closingDays: 60,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
+            />
+            <DropdownItem
+              label="90 days"
+              count={counts.closing.d90}
+              countClassName="text-sky-700"
+              selected={closingFilterActive && closingDays === 90}
+              onSelect={() => {
+                if (closingFilterActive && closingDays === 90) {
+                  navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") });
+                  return;
+                }
+                navigate(
+                  {
+                    tabs: addQuickFilterTab(activeTabs, "closing_soon"),
+                    closingDays: 90,
+                  },
+                  { resetSidebar: true }
+                );
+              }}
+            />
+            {closingFilterActive ? (
+              <DropdownClearFilter
+                onSelect={() => navigate({ tabs: toggleQuickFilterTab(activeTabs, "closing_soon") })}
+              />
+            ) : null}
+          </DropdownMenu>
+        </div>
+
         <PillDivider />
+
+        <button
+          type="button"
+          onClick={toggleNihFilter}
+          className={pillClasses("neutral", nihActive)}
+        >
+          <span>NIH</span>
+          <PillCount count={counts.nih} active={nihActive} />
+        </button>
 
         <button
           type="button"

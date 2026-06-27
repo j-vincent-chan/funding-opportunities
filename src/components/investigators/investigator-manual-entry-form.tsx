@@ -99,6 +99,7 @@ export function InvestigatorManualEntryForm({
       rank,
       nih_profile_id: nihProfileId,
       primary_research_area: primaryResearchArea,
+      research_summary: defaultValues?.research_summary ?? "",
       research_community_id: researchCommunityId || null,
     });
     setPending(false);

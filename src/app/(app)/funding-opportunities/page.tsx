@@ -43,6 +43,7 @@ import {
   isRecommendedMatch,
   looksLargeCollaborativeGrant,
 } from "@/lib/funding-opportunities/funding-quick-filter-heuristics";
+import { isNihFundingOpportunity } from "@/lib/funding-opportunities/funding-opportunity-application-materials";
 import { FundingListKeywordSearch } from "@/components/funding/funding-list-keyword-search";
 import { FundingChatPanel } from "@/components/funding/funding-chat-panel";
 import { FundingListPagination } from "@/components/funding/funding-list-pagination";
@@ -374,6 +375,9 @@ export default async function FundingOpportunitiesPage({
       month: filtered.filter((row) => isRowUpdatedWithinDays(row, 30)).length,
       quarter: filtered.filter((row) => isRowUpdatedWithinDays(row, 90)).length,
     },
+    nih: filtered.filter((row) =>
+      isNihFundingOpportunity({ agency: row.agency, agencyCode: row.agency_code })
+    ).length,
     esi: filtered.filter((row) => isEsiCareerDevelopment(row)).length,
     collaborative: filtered.filter((row) => looksLargeCollaborativeGrant(row)).length,
     investigatorInitiated: filtered.filter((row) => isInvestigatorInitiated(row)).length,

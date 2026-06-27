@@ -4,7 +4,7 @@ import {
   isFundingListQuickFilterTab,
   quickFiltersFromSearchParams,
 } from "./funding-quick-filters";
-import { fundingListHref, searchParamsToFundingListState } from "./funding-list-url";
+import { fundingListHref, searchParamsToFundingListState, defaultFundingListClientState, isNihDepartmentFilterActive, nihDepartmentFilterPatch } from "./funding-list-url";
 
 describe("quickFiltersFromSearchParams", () => {
   it("parses a single tab param", () => {
@@ -133,6 +133,31 @@ describe("applyFundingQuickFilters", () => {
     });
     expect(result).toHaveLength(0);
     expect(applyFundingQuickFilters(rows, ["esi_career"], { today, inDays, postedWithinDays, closingDays: 30, postedDays: 7, updatedDays: 7 })).toHaveLength(1);
+  });
+});
+
+describe("defaultFundingListClientState", () => {
+  it("defaults departments and agencies to All", () => {
+    const state = defaultFundingListClientState();
+    expect(state.allDepartments).toBe(true);
+    expect(state.departments).toEqual([]);
+    expect(state.departmentSubs).toEqual({});
+    expect(fundingListHref(state)).toContain("dept=all");
+  });
+});
+
+describe("nihDepartmentFilterPatch", () => {
+  it("selects DHHS with NIH only", () => {
+    const patch = nihDepartmentFilterPatch();
+    expect(patch).toEqual({
+      departments: ["hhs"],
+      departmentSubs: { hhs: ["nih"] },
+      legacyAgencies: [],
+      allDepartments: false,
+      noDepartmentsSelected: false,
+    });
+    expect(isNihDepartmentFilterActive({ ...defaultFundingListClientState(), ...patch })).toBe(true);
+    expect(isNihDepartmentFilterActive(defaultFundingListClientState())).toBe(false);
   });
 });
 

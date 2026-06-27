@@ -97,7 +97,7 @@ export type FundingListClientState = {
   savedSearchId?: string | null;
 };
 
-/** Default funding list: HHS/NIH, open+forecasted scope, posted date sort. */
+/** Default funding list: all departments, open+forecasted scope, posted date sort. */
 export function defaultFundingListClientState(): FundingListClientState {
   return {
     q: "",
@@ -107,13 +107,39 @@ export function defaultFundingListClientState(): FundingListClientState {
     order: "desc",
     page: DEFAULT_FUNDING_LIST_PAGE,
     perPage: DEFAULT_FUNDING_LIST_PER_PAGE,
+    departments: [],
+    departmentSubs: {},
+    legacyAgencies: [],
+    allDepartments: true,
+    noDepartmentsSelected: false,
+    rd: parseRdListFilters({}),
+  };
+}
+
+export function nihDepartmentFilterPatch(): Pick<
+  FundingListClientState,
+  "departments" | "departmentSubs" | "legacyAgencies" | "allDepartments" | "noDepartmentsSelected"
+> {
+  return {
     departments: ["hhs"],
     departmentSubs: { hhs: ["nih"] },
     legacyAgencies: [],
     allDepartments: false,
     noDepartmentsSelected: false,
-    rd: parseRdListFilters({}),
   };
+}
+
+export function isNihDepartmentFilterActive(
+  state: Pick<
+    FundingListClientState,
+    "departments" | "departmentSubs" | "legacyAgencies" | "allDepartments" | "noDepartmentsSelected"
+  >
+): boolean {
+  if (state.allDepartments || state.noDepartmentsSelected || state.legacyAgencies.length > 0) {
+    return false;
+  }
+  const hhsSubs = state.departmentSubs.hhs ?? [];
+  return state.departments.length === 1 && state.departments[0] === "hhs" && hhsSubs.length === 1 && hhsSubs[0] === "nih";
 }
 
 /** Agency + RD sidebar defaults — applied when a quick filter takes over from manual filters. */

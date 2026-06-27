@@ -74,8 +74,8 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
       departments: defaults.departments,
       departmentSubs: defaults.departmentSubs,
       legacyAgencies: [],
-      allDepartments: false,
-      noDepartmentsSelected: false,
+      allDepartments: defaults.allDepartments,
+      noDepartmentsSelected: defaults.noDepartmentsSelected,
       page: DEFAULT_FUNDING_LIST_PAGE,
     };
     if (!record.sort && !record.order) {
@@ -308,8 +308,8 @@ function FundingOpportunitiesFiltersPanelInner({ editorial = false }: { editoria
 
       <p className={foot}>
         Filters apply as you change them. Opportunity scope defaults to{" "}
-        <strong className="font-semibold text-[var(--fo-title)]">open + forecasted</strong> (excludes closed). Department
-        defaults to HHS with NIH selected.
+        <strong className="font-semibold text-[var(--fo-title)]">open + forecasted</strong> (excludes closed). Departments
+        and agencies default to <strong className="font-semibold text-[var(--fo-title)]">All</strong>.
       </p>
     </div>
   );
